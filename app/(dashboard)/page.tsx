@@ -1,6 +1,7 @@
 import { Suspense } from "react"
 import { Mail, MessageSquare, MessageCircle, Percent, Bell, Gauge } from "lucide-react"
-import { getGlobalKPIs, getClientSummaries, getDailySendHistory } from "@/lib/queries/analytics"
+import { getGlobalKPIs, getClientSummaries, getDailySendHistory, getTodayLive } from "@/lib/queries/analytics"
+import { TodayLiveStrip } from "@/components/shared/today-live-strip"
 import { getTopAlerts } from "@/lib/queries/alerts"
 import { getRecentSpamRisks } from "@/lib/queries/campaigns"
 import { replyRateColor } from "@/lib/design-tokens"
@@ -30,13 +31,26 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
   const days = parseRangeDays(params.range)
   const rangeKey = params.range ?? "7d"
 
-  const [kpis, summaries, topAlerts, sendHistory, spamRisks] = await Promise.all([
+  const [kpis, summaries, topAlerts, sendHistory, spamRisks, todayLive] = await Promise.all([
     getGlobalKPIs(days),
     getClientSummaries(days),
     getTopAlerts(5),
     getDailySendHistory(days),
     getRecentSpamRisks(7, 3),
+    getTodayLive(),
   ])
+
+  const liveTotals = todayLive.reduce(
+    (acc, r) => ({
+      sends: acc.sends + r.sends_today,
+      replies: acc.replies + r.replies_today,
+      lastEvent:
+        !acc.lastEvent || (r.last_send_at && r.last_send_at > acc.lastEvent)
+          ? r.last_send_at
+          : acc.lastEvent,
+    }),
+    { sends: 0, replies: 0, lastEvent: null as string | null }
+  )
 
   const replyRateColors = replyRateColor(kpis.overallReplyRate)
   const emailsSentLabel = days === 1 ? "Emails Sent Yesterday" : `Emails Sent (${RANGE_LABELS[rangeKey] ?? `${days}d`})`
@@ -57,6 +71,14 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
           <TimeRangeFilter />
         </Suspense>
       </div>
+
+      {/* Intraday activity from the live webhook capture */}
+      <TodayLiveStrip
+        sendsToday={liveTotals.sends}
+        repliesToday={liveTotals.replies}
+        lastEventAt={liveTotals.lastEvent}
+        scopeLabel="all clients"
+      />
 
       {/* Alerts Banner — only renders when alerts exist */}
       <AlertsBanner alerts={topAlerts} />

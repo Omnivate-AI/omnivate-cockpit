@@ -10,8 +10,10 @@ import { LeadPipelineFunnel } from "@/components/clients/lead-pipeline-funnel"
 import { RunwayCapacityWidget } from "@/components/clients/runway-capacity-widget"
 import { AnomalyCallouts } from "@/components/clients/anomaly-callouts"
 import { replyRateColor, healthColor, alertSeverityColor } from "@/lib/design-tokens"
-import { getClientRecentHistory, getClientAnomalyHistory, getClientSendReplyHistory, getClientReplyHistory, getClientPerformanceHistory } from "@/lib/queries/analytics"
-import { getClientAlerts } from "@/lib/queries/clients"
+import { getClientRecentHistory, getClientAnomalyHistory, getClientSendReplyHistory, getClientReplyHistory, getClientPerformanceHistory, getTodayLive, getClientProviderSplit } from "@/lib/queries/analytics"
+import { TodayLiveStrip } from "@/components/shared/today-live-strip"
+import { ProviderSplitCard } from "@/components/clients/provider-split-card"
+import { getClientAlerts, resolveClientSlugs } from "@/lib/queries/clients"
 import { getClientTotalReplies } from "@/lib/queries/campaigns"
 import { detectAnomalies } from "@/lib/scoring/anomaly-detection"
 import { formatDistanceToNow } from "date-fns"
@@ -32,7 +34,7 @@ export async function OverviewTab({
   config,
   alertCount,
 }: OverviewTabProps) {
-  const [history, anomalyHistory, sendReplyHistory, topAlerts, totalReplies, replyData, performanceHistory] = await Promise.all([
+  const [history, anomalyHistory, sendReplyHistory, topAlerts, totalReplies, replyData, performanceHistory, todayLive, providerSplit, childSlugs] = await Promise.all([
     getClientRecentHistory(clientSlug, 7),
     getClientAnomalyHistory(clientSlug, 14),
     getClientSendReplyHistory(clientSlug, 14),
@@ -40,8 +42,24 @@ export async function OverviewTab({
     getClientTotalReplies(clientSlug),
     getClientReplyHistory(clientSlug, 30),
     getClientPerformanceHistory(clientSlug, 60),
+    getTodayLive(),
+    getClientProviderSplit(clientSlug, 14),
+    resolveClientSlugs(clientSlug),
   ])
   const anomalies = detectAnomalies(anomalyHistory, config)
+
+  const liveRows = todayLive.filter((r) => childSlugs.includes(r.client))
+  const liveTotals = liveRows.reduce(
+    (acc, r) => ({
+      sends: acc.sends + r.sends_today,
+      replies: acc.replies + r.replies_today,
+      lastEvent:
+        !acc.lastEvent || (r.last_send_at && r.last_send_at > acc.lastEvent)
+          ? r.last_send_at
+          : acc.lastEvent,
+    }),
+    { sends: 0, replies: 0, lastEvent: null as string | null }
+  )
 
   const emailsSent = latestSnapshot?.emails_sent_count ?? null
   const positiveReplies = latestSnapshot?.positive_replies_count ?? null
@@ -63,6 +81,13 @@ export async function OverviewTab({
 
   return (
     <div className="space-y-6">
+      {/* Intraday activity from the live webhook capture */}
+      <TodayLiveStrip
+        sendsToday={liveTotals.sends}
+        repliesToday={liveTotals.replies}
+        lastEventAt={liveTotals.lastEvent}
+      />
+
       {/* Anomaly Callouts */}
       <AnomalyCallouts anomalies={anomalies} />
 
@@ -147,6 +172,9 @@ export async function OverviewTab({
           />
         </CardContent>
       </Card>
+
+      {/* Provider Performance (sender infrastructure split) */}
+      <ProviderSplitCard rows={providerSplit} days={14} />
 
       {/* Lead Pipeline Funnel */}
       <LeadPipelineFunnel snapshot={latestSnapshot} />

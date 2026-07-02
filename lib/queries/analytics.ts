@@ -895,6 +895,91 @@ export const getDailySendHistory = cache(
   }
 )
 
+// --- Today, live (webhook capture — NOT the daily source of truth) ---
+
+export interface TodayLiveRow {
+  client: string
+  sends_today: number
+  last_send_at: string | null
+  campaigns_sending_today: number
+  replies_today: number
+  last_reply_at: string | null
+}
+
+/**
+ * Intraday activity captured live by the smartlead-events Edge Function
+ * (sp_send_events) + reply webhook (sp_replies). Complements — never
+ * replaces — sp_daily_campaign_facts, which stays the daily source of truth.
+ */
+export const getTodayLive = cache(async (): Promise<TodayLiveRow[]> => {
+  const supabase = createServerClient()
+  const activeSlugs = await getActiveClients()
+
+  const { data } = await supabase
+    .from("vw_cockpit_today_live")
+    .select("*")
+    .in("client", activeSlugs)
+
+  return (data ?? []) as TodayLiveRow[]
+})
+
+// --- Provider segmentation (sender infrastructure) ---
+
+export interface ProviderSplitRow {
+  provider: string
+  sent: number
+  replies: number
+  replyRate: number
+  repliesFromGoogle: number
+  repliesFromMicrosoft: number
+  repliesFromOther: number
+}
+
+export const getClientProviderSplit = cache(
+  async (client: string, days: number = 14): Promise<ProviderSplitRow[]> => {
+    const supabase = createServerClient()
+    const slugs = await resolveClientSlugs(client)
+
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - days)
+
+    const { data } = await supabase
+      .from("vw_cockpit_provider_daily")
+      .select("*")
+      .in("client", slugs)
+      .gte("snapshot_date", cutoff.toISOString().split("T")[0])
+
+    const byProvider = new Map<string, ProviderSplitRow>()
+    for (const r of data ?? []) {
+      const key = (r.sender_provider as string | null) ?? "other"
+      const e =
+        byProvider.get(key) ??
+        ({
+          provider: key,
+          sent: 0,
+          replies: 0,
+          replyRate: 0,
+          repliesFromGoogle: 0,
+          repliesFromMicrosoft: 0,
+          repliesFromOther: 0,
+        } as ProviderSplitRow)
+      e.sent += r.sent ?? 0
+      e.replies += r.replies ?? 0
+      e.repliesFromGoogle += r.replies_from_google ?? 0
+      e.repliesFromMicrosoft += r.replies_from_microsoft ?? 0
+      e.repliesFromOther += r.replies_from_other ?? 0
+      byProvider.set(key, e)
+    }
+
+    return Array.from(byProvider.values())
+      .map((e) => ({
+        ...e,
+        replyRate: e.sent > 0 ? (e.replies / e.sent) * 100 : 0,
+      }))
+      .sort((a, b) => b.sent - a.sent)
+  }
+)
+
 // --- Digest ---
 
 export interface DigestClientRow {
