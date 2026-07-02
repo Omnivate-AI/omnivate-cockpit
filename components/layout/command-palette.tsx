@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import { clientLabel } from "@/lib/types"
 
 interface CommandItem {
   id: string
@@ -112,7 +113,7 @@ export function CommandPalette({ clients }: CommandPaletteProps) {
 
     const clientItems: CommandItem[] = clients.map((c) => ({
       id: `client-${c}`,
-      label: c.charAt(0).toUpperCase() + c.slice(1),
+      label: clientLabel(c),
       category: "Clients",
       icon: Users,
       action: () => navigate(`/clients/${c}`),

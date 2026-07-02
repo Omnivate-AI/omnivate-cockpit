@@ -210,8 +210,32 @@ export const CLIENTS = [
 ] as const
 export type Client = (typeof CLIENTS)[number]
 
-// Keep as fallback if DB query fails
-export const DEFAULT_CLIENTS = [...CLIENTS]
+// Fallback if the sp_clients query fails — mirrors the CURRENT active set
+// only, so a DB blip never resurrects churned clients in the sidebar.
+export const DEFAULT_CLIENTS = [
+  "acceleration_partners",
+  "cylindo",
+  "omnivate",
+  "paycaptain",
+]
+
+// Display labels for client slugs (sidebar, breadcrumbs, command palette).
+export const CLIENT_LABELS: Record<string, string> = {
+  acceleration_partners: "AP",
+  paycaptain: "PayCaptain",
+  cylindo: "Cylindo",
+  omnivate: "Omnivate",
+}
+
+export function clientLabel(slug: string): string {
+  return (
+    CLIENT_LABELS[slug] ??
+    slug
+      .split(/[-_]/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ")
+  )
+}
 
 // --- Client Onboarding Types ---
 

@@ -7,6 +7,7 @@ import { ThemeToggle } from "./theme-toggle"
 import { NotificationCenter } from "./notification-center"
 import { CommandPalette } from "./command-palette"
 import { AutoRefresh } from "./auto-refresh"
+import { clientLabel } from "@/lib/types"
 
 const ROUTE_LABELS: Record<string, string> = {
   "": "Dashboard",
@@ -33,7 +34,11 @@ export function Header({ onMenuClick, alertCount = 0, clients = [] }: HeaderProp
   const breadcrumbs = segments.length === 0
     ? [{ label: "Dashboard", href: "/" }]
     : segments.map((segment, i) => ({
-        label: ROUTE_LABELS[segment] || decodeURIComponent(segment).replace(/^\w/, c => c.toUpperCase()),
+        label:
+          segments[0] === "clients" && i === 1
+            ? clientLabel(decodeURIComponent(segment))
+            : ROUTE_LABELS[segment] ||
+              decodeURIComponent(segment).replace(/^\w/, c => c.toUpperCase()),
         href: "/" + segments.slice(0, i + 1).join("/"),
       }))
 

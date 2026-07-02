@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { FLAGS } from "@/lib/flags"
+import { clientLabel } from "@/lib/types"
 
 const CLIENT_COLORS: Record<string, string> = {
   roosterpunk: "bg-rose-500",
@@ -147,7 +148,7 @@ export function Sidebar({ alertCount = 0, clients, onNavigate }: SidebarProps) {
                   getClientColor(client)
                 )}
               />
-              <span className="capitalize">{client}</span>
+              <span>{clientLabel(client)}</span>
             </button>
           ))}
           {FLAGS.onboarding && (
