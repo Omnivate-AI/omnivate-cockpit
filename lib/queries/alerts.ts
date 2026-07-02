@@ -3,10 +3,13 @@ import { createServerClient } from "@/lib/supabase/server"
 import type { MailboxAlert } from "@/lib/types"
 import type { AlertWithDomain } from "./clients"
 
+// All alert reads go through vw_cockpit_alerts (sp_infra_alerts + domain name).
+// Status vocabulary is the sp_* one: open | resolved.
+
 // --- Interfaces ---
 
 export interface AlertListFilters {
-  severity?: "warning" | "critical" | null
+  severity?: string | null
   client?: string | null
   alertType?: string | null
   resolved?: boolean
@@ -50,9 +53,9 @@ export const getAlertList = cache(
     } = filters
 
     let query = supabase
-      .from("mailbox_alerts")
-      .select("*, mailbox_domains(domain_name, client)", { count: "exact" })
-      .eq("status", resolved ? "resolved" : "pending")
+      .from("vw_cockpit_alerts")
+      .select("*", { count: "exact" })
+      .eq("status", resolved ? "resolved" : "open")
       .order("created_at", { ascending: false })
 
     if (severity) {
@@ -61,6 +64,10 @@ export const getAlertList = cache(
 
     if (alertType) {
       query = query.eq("alert_type", alertType)
+    }
+
+    if (client) {
+      query = query.eq("client", client)
     }
 
     const offset = (page - 1) * pageSize
@@ -72,24 +79,12 @@ export const getAlertList = cache(
       return { alerts: [], totalCount: 0 }
     }
 
-    let alerts: AlertWithDomain[] = data.map((a) => {
-      const domain = a.mailbox_domains as unknown as {
-        domain_name: string
-        client: string
-      } | null
-      const { mailbox_domains: _, ...rest } = a
-      return {
-        ...rest,
-        domain_name: domain?.domain_name ?? "Unknown",
-        client: domain?.client ?? "",
-      } as AlertWithDomain
-    })
+    const alerts: AlertWithDomain[] = (data as AlertWithDomain[]).map((a) => ({
+      ...a,
+      domain_name: a.domain_name ?? "—",
+    }))
 
-    if (client) {
-      alerts = alerts.filter((a) => a.client === client)
-    }
-
-    return { alerts, totalCount: client ? alerts.length : (count ?? 0) }
+    return { alerts, totalCount: count ?? 0 }
   }
 )
 
@@ -102,13 +97,13 @@ export const getAlertCounts = cache(
 
     const [unresolvedRes, resolvedRes] = await Promise.all([
       supabase
-        .from("mailbox_alerts")
+        .from("vw_cockpit_alerts")
         .select("*", { count: "exact", head: true })
-        .eq("status", "pending"),
+        .eq("status", "open"),
       supabase
-        .from("mailbox_alerts")
+        .from("vw_cockpit_alerts")
         .select("*", { count: "exact", head: true })
-        .in("status", ["resolved", "dismissed"]),
+        .eq("status", "resolved"),
     ])
 
     return {
@@ -122,34 +117,23 @@ export const getRecentAlerts = cache(
   async (limit: number, client?: string | null): Promise<RecentAlert[]> => {
     const supabase = createServerClient()
 
-    const query = supabase
-      .from("mailbox_alerts")
-      .select("*, mailbox_domains(domain_name, client)")
-      .eq("status", "pending")
+    let query = supabase
+      .from("vw_cockpit_alerts")
+      .select("*")
+      .eq("status", "open")
       .order("created_at", { ascending: false })
       .limit(limit)
 
-    const { data } = await query
-    if (!data) return []
-
-    let alerts = data.map((a) => {
-      const domain = a.mailbox_domains as unknown as {
-        domain_name: string
-        client: string
-      } | null
-      return {
-        ...a,
-        domain_name: domain?.domain_name ?? "Unknown",
-        _client: domain?.client ?? "",
-        mailbox_domains: undefined,
-      }
-    })
-
     if (client) {
-      alerts = alerts.filter((a) => a._client === client)
+      query = query.eq("client", client)
     }
 
-    return alerts.map(({ _client, ...rest }) => rest) as RecentAlert[]
+    const { data } = await query
+
+    return ((data ?? []) as RecentAlert[]).map((a) => ({
+      ...a,
+      domain_name: a.domain_name ?? "—",
+    }))
   }
 )
 
@@ -175,37 +159,40 @@ export const getClientAlertData = cache(
 
     const [unresolvedRes, resolvedRes] = await Promise.all([
       supabase
-        .from("mailbox_alerts")
-        .select("*, mailbox_domains!inner(domain_name, client)")
-        .eq("status", "pending")
-        .eq("mailbox_domains.client", client)
+        .from("vw_cockpit_alerts")
+        .select("*")
+        .eq("status", "open")
+        .eq("client", client)
         .order("created_at", { ascending: false }),
       supabase
-        .from("mailbox_alerts")
-        .select("*, mailbox_domains!inner(domain_name, client)")
-        .in("status", ["resolved", "dismissed"])
-        .eq("mailbox_domains.client", client)
+        .from("vw_cockpit_alerts")
+        .select("*")
+        .eq("status", "resolved")
+        .eq("client", client)
         .gte("resolved_at", weekAgo)
         .order("resolved_at", { ascending: false })
         .limit(20),
     ])
 
-    const mapAlert = (a: Record<string, unknown>): AlertWithDomain => {
-      const domain = a.mailbox_domains as { domain_name: string; client: string } | null
-      const { mailbox_domains: _, ...rest } = a
-      return {
-        ...rest,
-        domain_name: domain?.domain_name ?? "Unknown",
-        client: domain?.client ?? client,
-      } as AlertWithDomain
-    }
+    const normalize = (a: AlertWithDomain): AlertWithDomain => ({
+      ...a,
+      domain_name: a.domain_name ?? "—",
+    })
 
-    const unresolved = (unresolvedRes.data ?? []).map(mapAlert)
-    const recentlyResolved = (resolvedRes.data ?? []).map(mapAlert)
+    const unresolved = ((unresolvedRes.data ?? []) as AlertWithDomain[]).map(
+      normalize
+    )
+    const recentlyResolved = (
+      (resolvedRes.data ?? []) as AlertWithDomain[]
+    ).map(normalize)
 
     const summary: ClientAlertSummary = {
-      critical: unresolved.filter((a) => a.severity === "critical").length,
-      warning: unresolved.filter((a) => a.severity === "warning").length,
+      critical: unresolved.filter((a) =>
+        ["critical", "high"].includes(a.severity)
+      ).length,
+      warning: unresolved.filter((a) =>
+        ["warning", "medium"].includes(a.severity)
+      ).length,
       resolvedThisWeek: recentlyResolved.length,
     }
 
@@ -218,33 +205,27 @@ export const getTopAlerts = cache(
     const supabase = createServerClient()
 
     const { data } = await supabase
-      .from("mailbox_alerts")
+      .from("vw_cockpit_alerts")
       .select(
-        "id, alert_type, severity, title, description, created_at, mailbox_domains(domain_name, client)"
+        "id, alert_type, severity, title, description, created_at, client, domain_name"
       )
-      .eq("status", "pending")
+      .eq("status", "open")
       .order("severity", { ascending: true }) // critical before warning (alphabetical)
       .order("created_at", { ascending: false })
       .limit(limit)
 
     if (!data) return []
 
-    return data.map((a) => {
-      const domain = a.mailbox_domains as unknown as {
-        domain_name: string
-        client: string
-      } | null
-      return {
-        id: a.id,
-        alert_type: a.alert_type,
-        severity: a.severity,
-        title: a.title,
-        description: a.description,
-        client: domain?.client ?? "",
-        domain_name: domain?.domain_name ?? "Unknown",
-        created_at: a.created_at,
-      }
-    })
+    return data.map((a) => ({
+      id: a.id,
+      alert_type: a.alert_type,
+      severity: a.severity,
+      title: a.title,
+      description: a.description,
+      client: a.client ?? "",
+      domain_name: a.domain_name ?? "—",
+      created_at: a.created_at,
+    }))
   }
 )
 
@@ -264,19 +245,19 @@ export const getGlobalAlertSummary = cache(
 
     const [criticalRes, warningRes, resolvedRes] = await Promise.all([
       supabase
-        .from("mailbox_alerts")
+        .from("vw_cockpit_alerts")
         .select("*", { count: "exact", head: true })
-        .eq("status", "pending")
-        .eq("severity", "critical"),
+        .eq("status", "open")
+        .in("severity", ["critical", "high"]),
       supabase
-        .from("mailbox_alerts")
+        .from("vw_cockpit_alerts")
         .select("*", { count: "exact", head: true })
-        .eq("status", "pending")
-        .eq("severity", "warning"),
+        .eq("status", "open")
+        .in("severity", ["warning", "medium"]),
       supabase
-        .from("mailbox_alerts")
+        .from("vw_cockpit_alerts")
         .select("*", { count: "exact", head: true })
-        .in("status", ["resolved", "dismissed"])
+        .eq("status", "resolved")
         .gte("resolved_at", weekAgo),
     ])
 
@@ -292,7 +273,7 @@ export const getDistinctAlertTypes = cache(async (): Promise<string[]> => {
   const supabase = createServerClient()
 
   const { data } = await supabase
-    .from("mailbox_alerts")
+    .from("vw_cockpit_alerts")
     .select("alert_type")
     .order("alert_type", { ascending: true })
 

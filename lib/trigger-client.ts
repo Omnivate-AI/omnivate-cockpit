@@ -1,15 +1,10 @@
 const TRIGGER_API_BASE = "https://api.trigger.dev"
 
+// Only run-pipeline survives the sp_* migration — every other task in the
+// old whitelist operates on the retired mailbox_*/analytics_* model.
+// Infra actions come back in a later build via sp_*-native primitives.
 const TASK_WHITELIST = [
-  "refresh-client-analytics",
-  "sync-mailbox-inventory",
-  "sync-campaign-registry",
-  "monitor-mailbox-health",
-  "rotate-burnt-domain",
-  "drain-and-swap",
   "run-pipeline",
-  "check-domain-candidates",
-  "place-inboxkit-order-multi",
 ] as const
 
 export type WhitelistedTask = (typeof TASK_WHITELIST)[number]

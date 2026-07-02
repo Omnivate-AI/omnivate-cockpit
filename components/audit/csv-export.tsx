@@ -29,8 +29,8 @@ function CsvExportInner() {
       const dateRange = searchParams.get("range")
 
       let query = supabase
-        .from("mailbox_actions_log")
-        .select("*, mailbox_domains(domain_name, client)")
+        .from("vw_cockpit_actions")
+        .select("*")
         .order("created_at", { ascending: false })
         .limit(1000)
 
@@ -39,6 +39,9 @@ function CsvExportInner() {
       }
       if (status) {
         query = query.eq("status", status)
+      }
+      if (client) {
+        query = query.eq("client", client)
       }
       if (dateRange && dateRange !== "all") {
         const since = new Date()
@@ -52,30 +55,19 @@ function CsvExportInner() {
         return
       }
 
-      // Map and optionally filter by client
-      let rows = data.map((a) => {
-        const domain = a.mailbox_domains as unknown as {
-          domain_name: string
-          client: string
-        } | null
-        return {
-          date: format(new Date(a.created_at), "yyyy-MM-dd HH:mm:ss"),
-          domain: domain?.domain_name ?? "Unknown",
-          client: domain?.client ?? "",
-          action: a.action_type,
-          status: a.status,
-          triggered_by: a.triggered_by ?? "",
-          details: a.details ? JSON.stringify(a.details) : "",
-          error: a.error_message ?? "",
-          completed_at: a.completed_at
-            ? format(new Date(a.completed_at), "yyyy-MM-dd HH:mm:ss")
-            : "",
-        }
-      })
-
-      if (client) {
-        rows = rows.filter((r) => r.client === client)
-      }
+      const rows = data.map((a) => ({
+        date: format(new Date(a.created_at), "yyyy-MM-dd HH:mm:ss"),
+        domain: a.domain_name ?? "—",
+        client: a.client ?? "",
+        action: a.action_type,
+        status: a.status,
+        triggered_by: a.approved_by ?? "",
+        details: a.details ? JSON.stringify(a.details) : "",
+        error: a.error ?? "",
+        completed_at: a.executed_at
+          ? format(new Date(a.executed_at), "yyyy-MM-dd HH:mm:ss")
+          : "",
+      }))
 
       const headers = [
         "Date",

@@ -1,30 +1,13 @@
-import { createServerClient } from "@/lib/supabase/server"
+import { DISABLED_ACTION_MESSAGE } from "@/lib/flags"
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const id = searchParams.get("id")
+// Disabled in the sp_* migration build: this route dispatched control-plane
+// actions (Trigger.dev / InboxKit / Smartlead) that operate on the retired
+// legacy model. Re-wired to sp_*-native primitives in a later build.
+const disabled = () =>
+  Response.json({ error: DISABLED_ACTION_MESSAGE, disabled: true }, { status: 410 })
 
-  if (!id || isNaN(Number(id))) {
-    return Response.json(
-      { error: "Valid id parameter is required" },
-      { status: 400 }
-    )
-  }
-
-  const supabase = createServerClient()
-
-  const { data, error } = await supabase
-    .from("client_setups")
-    .select("*")
-    .eq("id", Number(id))
-    .single()
-
-  if (error || !data) {
-    return Response.json(
-      { error: "Setup not found" },
-      { status: 404 }
-    )
-  }
-
-  return Response.json({ setup: data })
-}
+export const GET = disabled
+export const POST = disabled
+export const PUT = disabled
+export const PATCH = disabled
+export const DELETE = disabled

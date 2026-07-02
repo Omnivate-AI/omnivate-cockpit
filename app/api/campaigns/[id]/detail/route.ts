@@ -3,8 +3,9 @@ import { createServerClient } from "@/lib/supabase/server"
 import type { CampaignDetailPoint, CampaignMailbox, PlacementTestResult } from "@/lib/queries/campaigns"
 
 /**
- * GET /api/campaigns/[id]/detail — fetch 14-day history + attached mailboxes for a campaign.
- * `id` is the smartlead_campaign_id from campaign_registry.
+ * GET /api/campaigns/[id]/detail — 14-day history + attached mailboxes + latest
+ * placement for a campaign. `id` is the SMARTLEAD campaign id.
+ * Reads vw_cockpit_campaign_daily / vw_cockpit_accounts / vw_cockpit_placement_results.
  */
 export async function GET(
   _request: NextRequest,
@@ -22,10 +23,9 @@ export async function GET(
   since.setDate(since.getDate() - 14)
   const sinceStr = since.toISOString().split("T")[0]
 
-  // Fetch history, mailboxes, and placement results in parallel
   const [historyRes, mailboxRes, placementRes] = await Promise.all([
     supabase
-      .from("campaign_analytics_snapshots")
+      .from("vw_cockpit_campaign_daily")
       .select(
         "snapshot_date, total_leads, emails_sent, bounced, positive_replies, reply_count, unsent_leads, mailbox_count, positive_reply_rate, leads_not_started, leads_in_progress, leads_completed, leads_blocked, all_time_emails_sent, all_time_interested"
       )
@@ -33,14 +33,14 @@ export async function GET(
       .gte("snapshot_date", sinceStr)
       .order("snapshot_date", { ascending: true }),
     supabase
-      .from("mailbox_accounts")
+      .from("vw_cockpit_accounts")
       .select(
         "id, email, domain_name, client, lifecycle_status, warmup_health_pct, platform, is_master_inbox, campaign_ids"
       )
       .contains("campaign_ids", [campaignId])
       .order("email", { ascending: true }),
     supabase
-      .from("placement_test_results")
+      .from("vw_cockpit_placement_results")
       .select("*")
       .eq("smartlead_campaign_id", campaignId)
       .order("test_date", { ascending: false })
@@ -58,7 +58,7 @@ export async function GET(
   const mailboxes: CampaignMailbox[] = (mailboxRes.data ?? []).map((a) => ({
     id: a.id,
     email: a.email,
-    domain_name: a.domain_name,
+    domain_name: a.domain_name ?? "",
     client: a.client,
     lifecycle_status: a.lifecycle_status,
     warmup_health_pct: a.warmup_health_pct,

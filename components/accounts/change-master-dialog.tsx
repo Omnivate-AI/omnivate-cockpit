@@ -54,31 +54,25 @@ export function ChangeMasterDialog({
 
     async function fetchEligible() {
       const { data } = await supabase
-        .from("mailbox_accounts")
+        .from("vw_cockpit_accounts")
         .select(
-          "id, email, domain_id, warmup_health_pct, is_master_inbox, lifecycle_status, mailbox_domains!inner(domain_name, warmup_health_avg)"
+          "id, email, domain_id, domain_name, warmup_health_pct, is_master_inbox, lifecycle_status"
         )
         .eq("client", client!)
-        .in("lifecycle_status", ["active", "ramping"])
+        .in("lifecycle_status", ["active", "reserve"])
         .gt("warmup_health_pct", 90)
         .order("email", { ascending: true })
 
       if (data) {
-        const accounts: EligibleAccount[] = data.map((a) => {
-          const domain = a.mailbox_domains as unknown as {
-            domain_name: string
-            warmup_health_avg: number | null
-          }
-          return {
-            id: a.id,
-            email: a.email,
-            domain_id: a.domain_id,
-            domain_name: domain?.domain_name ?? "",
-            warmup_health_pct: a.warmup_health_pct,
-            domain_health: domain?.warmup_health_avg ?? null,
-            is_master_inbox: a.is_master_inbox,
-          }
-        })
+        const accounts: EligibleAccount[] = data.map((a) => ({
+          id: a.id,
+          email: a.email,
+          domain_id: a.domain_id ?? 0,
+          domain_name: a.domain_name ?? "",
+          warmup_health_pct: a.warmup_health_pct,
+          domain_health: null,
+          is_master_inbox: a.is_master_inbox,
+        }))
         setEligible(accounts)
 
         // Pre-select current master if exists

@@ -76,7 +76,7 @@ export function RotateDialog({
         const supabase = createClient()
         // Fetch account count for this domain
         supabase
-          .from("mailbox_accounts")
+          .from("vw_cockpit_accounts")
           .select("*", { count: "exact", head: true })
           .eq("domain_id", domainId)
           .then(({ count }) => {
@@ -84,7 +84,7 @@ export function RotateDialog({
           })
         // Fetch master inbox email for this client
         supabase
-          .from("mailbox_accounts")
+          .from("vw_cockpit_accounts")
           .select("email")
           .eq("client", client)
           .eq("is_master_inbox", true)
@@ -131,11 +131,11 @@ export function RotateDialog({
   function startPolling() {
     const supabase = createClient()
 
-    // Poll mailbox_actions_log for rotation completion
+    // Poll the actions log for rotation completion
     pollRef.current = setInterval(async () => {
       const { data } = await supabase
-        .from("mailbox_actions_log")
-        .select("status, error_message")
+        .from("vw_cockpit_actions")
+        .select("status, error")
         .eq("domain_id", domainId)
         .eq("action_type", "rotate_burnt")
         .order("created_at", { ascending: false })
@@ -154,9 +154,9 @@ export function RotateDialog({
         } else if (action.status === "failed") {
           cleanup()
           setStatus("error")
-          setErrorMessage(action.error_message || "Rotation task failed")
+          setErrorMessage(action.error || "Rotation task failed")
           toast.error("Rotation failed", {
-            description: action.error_message || "Check the audit log for details",
+            description: action.error || "Check the audit log for details",
           })
         }
       }

@@ -1,53 +1,25 @@
 import { NextRequest } from "next/server"
-import { triggerTask, getRunStatus, isTriggerConfigured } from "@/lib/trigger-client"
+import { DISABLED_ACTION_MESSAGE } from "@/lib/flags"
 
 /**
- * POST /api/analytics/refresh — trigger the refresh-client-analytics task
- * GET  /api/analytics/refresh?runId=xxx — poll run status
+ * POST /api/analytics/refresh — DISABLED in this build.
+ *
+ * The legacy refresh-client-analytics Trigger.dev task wrote the retired
+ * analytics_snapshots tables. Data now flows in via the smartlead-perf
+ * plugin's daily sync (sp_* tables); an in-app "kick the sync" button is a
+ * later build (PORT-1).
  */
 
 export async function POST() {
-  if (!isTriggerConfigured()) {
-    return Response.json(
-      { error: "TRIGGER_SECRET_KEY not configured" },
-      { status: 500 }
-    )
-  }
-
-  try {
-    const { runId } = await triggerTask("refresh-client-analytics")
-    return Response.json({ runId })
-  } catch (err) {
-    return Response.json(
-      { error: err instanceof Error ? err.message : "Unknown error" },
-      { status: 502 }
-    )
-  }
+  return Response.json(
+    { error: DISABLED_ACTION_MESSAGE, disabled: true },
+    { status: 501 }
+  )
 }
 
-export async function GET(request: NextRequest) {
-  const runId = request.nextUrl.searchParams.get("runId")
-  if (!runId) {
-    return Response.json({ error: "runId parameter is required" }, { status: 400 })
-  }
-
-  if (!isTriggerConfigured()) {
-    return Response.json(
-      { error: "TRIGGER_SECRET_KEY not configured" },
-      { status: 500 }
-    )
-  }
-
-  try {
-    const { status, output } = await getRunStatus(runId)
-    return Response.json({
-      status,
-      metadata: output ?? null,
-    })
-  } catch (err) {
-    return Response.json(
-      { error: err instanceof Error ? err.message : "Unknown error" },
-      { status: 502 }
-    )
-  }
+export async function GET(_request: NextRequest) {
+  return Response.json(
+    { error: DISABLED_ACTION_MESSAGE, disabled: true },
+    { status: 501 }
+  )
 }

@@ -15,21 +15,25 @@ export interface MailboxDomain {
   updated_at: string
 }
 
+// Backed by vw_cockpit_accounts (sp_mailboxes + provider normalization + roster).
 export interface MailboxAccount {
   id: number
+  smartlead_account_id: number | null
   email: string
-  domain_id: number
+  domain_id: number | null
+  domain_name: string | null
   client: string
-  from_name: string | null
+  persona: string | null
   lifecycle_status: LifecycleStatus
   warmup_health_pct: number | null
-  warmup_sent: number | null
-  warmup_received: number | null
+  warmup_status: string | null
+  mailbox_group: string | null
   is_warmup_blocked: boolean
   max_email_per_day: number | null
   platform: string | null
+  provider_canonical: string | null
   smartlead_tags: string[] | null
-  campaign_ids: string[] | null
+  campaign_ids: number[] | null
   is_master_inbox: boolean
   created_at: string
   updated_at: string
@@ -47,41 +51,51 @@ export interface HealthSnapshot {
   created_at: string
 }
 
+// Backed by vw_cockpit_actions (sp_actions_log + domain/mailbox attribution).
 export interface MailboxAction {
   id: number
-  domain_id: number
+  domain_id: number | null
+  account_id: number | null
   action_type: string
   status: string
+  description: string | null
   details: Record<string, unknown> | null
-  error_message: string | null
-  triggered_by: string | null
+  approved_by: string | null
+  executed_at: string | null
+  error: string | null
   created_at: string
-  completed_at: string | null
 }
 
+// Backed by sp_infra_alerts (via vw_cockpit_alerts). Status vocabulary is the
+// sp_* one: open | resolved (the old "dismissed" maps to resolved + note).
 export interface MailboxAlert {
   id: number
   alert_type: string
-  severity: "warning" | "critical"
+  // perf alerts use critical/warning/info; infra alerts use high/medium/low
+  severity: string
   client: string
-  domain_id: number
+  domain_id: number | null
   title: string
   description: string | null
   proposed_actions: unknown[] | null
-  status: "pending" | "dismissed" | "resolved"
+  status: "open" | "resolved"
+  resolution_note: string | null
   slack_message_ts: string | null
   resolved_by: string | null
   resolved_at: string | null
   created_at: string
 }
 
-// Canonical taxonomy (migration 074). burnt = actionable problem state,
-// retired = terminal out-of-service. See knowledge/email-infrastructure/mailbox-health-architecture.md
+// Canonical taxonomy = the sp_* model (email-infra plugin owns it):
+// active, warming, reserve, resting, parked, burnt, retired, master.
+// provisioning/ramping/draining kept for display back-compat only.
 export type LifecycleStatus =
   | "provisioning"
   | "warming"
   | "reserve"
   | "ramping"
+  | "resting"
+  | "parked"
   | "active"
   | "burnt"
   | "draining"
@@ -125,6 +139,20 @@ export const LIFECYCLE_STATUS_CONFIG: Record<
     bgColor: "bg-blue-50",
     borderColor: "border-blue-200",
     dotColor: "bg-blue-500",
+  },
+  resting: {
+    label: "Resting",
+    color: "text-teal-700",
+    bgColor: "bg-teal-50",
+    borderColor: "border-teal-200",
+    dotColor: "bg-teal-500",
+  },
+  parked: {
+    label: "Parked",
+    color: "text-zinc-600",
+    bgColor: "bg-zinc-50",
+    borderColor: "border-zinc-200",
+    dotColor: "bg-zinc-400",
   },
   active: {
     label: "Active",

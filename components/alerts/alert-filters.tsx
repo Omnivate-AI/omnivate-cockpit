@@ -58,8 +58,9 @@ function AlertFiltersInner({ clients, alertTypes }: AlertFiltersInnerProps) {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All Severities</SelectItem>
-          <SelectItem value="critical">Critical</SelectItem>
-          <SelectItem value="warning">Warning</SelectItem>
+          <SelectItem value="high">High</SelectItem>
+          <SelectItem value="medium">Medium</SelectItem>
+          <SelectItem value="low">Low</SelectItem>
         </SelectContent>
       </Select>
 

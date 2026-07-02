@@ -56,7 +56,7 @@ export function AlertTable({ alerts, resolved = false }: AlertTableProps) {
                   <span
                     className={cn(
                       "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-                      alert.severity === "critical"
+                      ["critical", "high"].includes(alert.severity)
                         ? "bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400"
                         : "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
                     )}
@@ -100,9 +100,9 @@ export function AlertTable({ alerts, resolved = false }: AlertTableProps) {
                 {!resolved && (
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      {alert.severity === "critical" && (
+                      {["critical", "high"].includes(alert.severity) && (
                         <RotateButton
-                          domainId={alert.domain_id}
+                          domainId={alert.domain_id ?? 0}
                           domainName={alert.domain_name}
                           client={alert.client}
                           alertId={alert.id}

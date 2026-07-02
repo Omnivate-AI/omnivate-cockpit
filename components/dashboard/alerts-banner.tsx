@@ -19,7 +19,7 @@ export function AlertsBanner({ alerts }: AlertsBannerProps) {
       </div>
       <ul className="space-y-2">
         {alerts.map((alert) => {
-          const isCritical = alert.severity === "critical"
+          const isCritical = ["critical", "high"].includes(alert.severity)
           return (
             <li key={alert.id} className="flex items-center justify-between gap-3 text-sm">
               <div className="flex items-center gap-2 min-w-0">

@@ -1,10 +1,16 @@
 import { cache } from "react"
 import { createServerClient } from "@/lib/supabase/server"
-import type {
-  LifecycleStatus,
-  MailboxAccount,
-} from "@/lib/types"
+import type { LifecycleStatus, MailboxAccount } from "@/lib/types"
 import type { DomainInfo, DomainHealthDay, DomainAction } from "@/lib/scoring/burn-prediction"
+import { getActiveClients } from "@/lib/queries/clients"
+
+// Infra reads come from:
+//   vw_cockpit_accounts   (sp_mailboxes via provider-normalized vw_sp_mailboxes + roster)
+//   vw_cockpit_domains    (sp_domains + live account counts)
+//   vw_cockpit_client_health_summary / vw_cockpit_client_capacity
+//   vw_cockpit_domain_health_daily (per-domain daily warmup from sp_daily_mailbox_facts)
+//   vw_cockpit_mailbox_rates (latest placement spam % + 30d reply rate per box)
+//   vw_cockpit_burnt_domains, sp_domain_candidates, sp_decisions, sp_clients
 
 // --- Interfaces ---
 
@@ -46,7 +52,7 @@ export interface ClientMailboxRow {
   id: number
   email: string
   domain_name: string
-  domain_id: number
+  domain_id: number | null
   client: string
   lifecycle_status: string
   warmup_health_pct: number | null
@@ -77,6 +83,11 @@ const VALID_ACCOUNT_SORT_COLS: Record<string, string> = {
   updated_at: "updated_at",
 }
 
+// Planning divisor for "how many mailboxes does a volume target need".
+// Pool policy is 25/day Gmail, 20/day Outlook — 25 is the optimistic divisor;
+// real capacity always comes from summing max_email_per_day.
+const DAILY_CAPACITY_PER_MAILBOX = 25
+
 // --- Functions ---
 
 export const getAccountList = cache(
@@ -97,13 +108,11 @@ export const getAccountList = cache(
     } = filters
 
     let query = supabase
-      .from("mailbox_accounts")
-      .select("*, mailbox_domains!inner(domain_name)", { count: "exact" })
+      .from("vw_cockpit_accounts")
+      .select("*", { count: "exact" })
 
     if (search) {
-      query = query.or(
-        `email.ilike.%${search}%,mailbox_domains.domain_name.ilike.%${search}%`
-      )
+      query = query.or(`email.ilike.%${search}%,domain_name.ilike.%${search}%`)
     }
 
     if (client) {
@@ -137,14 +146,10 @@ export const getAccountList = cache(
       return { accounts: [], totalCount: 0 }
     }
 
-    const accounts: AccountListRow[] = data.map((a) => {
-      const domain = a.mailbox_domains as unknown as { domain_name: string }
-      const { mailbox_domains: _, ...account } = a
-      return {
-        ...account,
-        domain_name: domain?.domain_name ?? "",
-      } as AccountListRow
-    })
+    const accounts: AccountListRow[] = (data as AccountListRow[]).map((a) => ({
+      ...a,
+      domain_name: a.domain_name ?? "",
+    }))
 
     return { accounts, totalCount: count ?? 0 }
   }
@@ -153,43 +158,35 @@ export const getAccountList = cache(
 export const getMasterInboxCards = cache(
   async (): Promise<MasterInboxCard[]> => {
     const supabase = createServerClient()
+    const clients = await getActiveClients()
 
-    const { data: masterAccounts } = await supabase
-      .from("mailbox_accounts")
-      .select(
-        "id, email, domain_id, client, warmup_health_pct, mailbox_domains(domain_name)"
-      )
-      .eq("is_master_inbox", true)
-
-    const { data: allAccounts } = await supabase
-      .from("mailbox_accounts")
-      .select("client")
+    const [{ data: masterAccounts }, { data: allAccounts }] = await Promise.all([
+      supabase
+        .from("vw_cockpit_accounts")
+        .select("id, email, domain_id, domain_name, client, warmup_health_pct")
+        .eq("is_master_inbox", true),
+      supabase.from("vw_cockpit_accounts").select("client"),
+    ])
 
     const accountCounts = new Map<string, number>()
-    if (allAccounts) {
-      for (const a of allAccounts) {
-        accountCounts.set(a.client, (accountCounts.get(a.client) ?? 0) + 1)
-      }
+    for (const a of allAccounts ?? []) {
+      if (!a.client) continue
+      accountCounts.set(a.client, (accountCounts.get(a.client) ?? 0) + 1)
     }
 
     const masterMap = new Map<string, MasterInboxCard["masterAccount"]>()
-    if (masterAccounts) {
-      for (const a of masterAccounts) {
-        const domain = a.mailbox_domains as unknown as {
-          domain_name: string
-        } | null
-        masterMap.set(a.client, {
-          id: a.id,
-          email: a.email,
-          domain_name: domain?.domain_name ?? "",
-          domain_id: a.domain_id,
-          warmup_health_pct: a.warmup_health_pct,
-        })
-      }
+    for (const a of masterAccounts ?? []) {
+      if (!a.client) continue
+      masterMap.set(a.client, {
+        id: a.id,
+        email: a.email,
+        domain_name: a.domain_name ?? "",
+        domain_id: a.domain_id ?? 0,
+        warmup_health_pct: a.warmup_health_pct,
+      })
     }
 
-    const { CLIENTS } = await import("@/lib/types")
-    return CLIENTS.map((client) => ({
+    return clients.map((client) => ({
       client,
       masterAccount: masterMap.get(client) ?? null,
       accountCount: accountCounts.get(client) ?? 0,
@@ -202,7 +199,7 @@ export const getClientMailboxInventory = cache(
     const supabase = createServerClient()
 
     const { data } = await supabase
-      .from("mailbox_accounts")
+      .from("vw_cockpit_accounts")
       .select(
         "id, email, domain_name, domain_id, client, lifecycle_status, warmup_health_pct, platform, campaign_ids, max_email_per_day, is_master_inbox, smartlead_tags, is_warmup_blocked, health_checked_at"
       )
@@ -211,39 +208,36 @@ export const getClientMailboxInventory = cache(
 
     if (!data) return []
 
-    // Fetch latest health snapshot per account for spam/reply rates
+    // Latest placement spam % + 30d reply rate per mailbox
     const accountIds = data.map((a) => a.id)
-    const healthMap = new Map<number, { spam_rate_pct: number | null; reply_rate_pct: number | null }>()
+    const rateMap = new Map<
+      number,
+      { spam_rate_pct: number | null; reply_rate_pct: number | null }
+    >()
 
     if (accountIds.length > 0) {
-      // Get latest snapshot per account using distinct on account_id ordered by snapshot_date desc
-      const { data: snapshots } = await supabase
-        .from("mailbox_health_snapshots")
-        .select("account_id, spam_rate_pct, reply_rate_pct, snapshot_date")
+      const { data: rates } = await supabase
+        .from("vw_cockpit_mailbox_rates")
+        .select("account_id, spam_rate_pct, reply_rate_pct")
         .in("account_id", accountIds)
-        .not("account_id", "is", null)
-        .order("snapshot_date", { ascending: false })
 
-      if (snapshots) {
-        // Take the latest snapshot per account_id
-        for (const s of snapshots) {
-          const aid = s.account_id as number
-          if (!healthMap.has(aid)) {
-            healthMap.set(aid, {
-              spam_rate_pct: s.spam_rate_pct as number | null,
-              reply_rate_pct: s.reply_rate_pct as number | null,
-            })
-          }
-        }
+      for (const r of rates ?? []) {
+        rateMap.set(r.account_id, {
+          spam_rate_pct: r.spam_rate_pct,
+          reply_rate_pct: r.reply_rate_pct,
+        })
       }
     }
 
     return data.map((a) => {
-      const health = healthMap.get(a.id)
+      const rates = rateMap.get(a.id)
       return {
         ...a,
-        spam_rate_pct: health?.spam_rate_pct ?? null,
-        reply_rate_pct: health?.reply_rate_pct ?? null,
+        domain_name: a.domain_name ?? "",
+        smartlead_tags: (a.smartlead_tags as string[] | null) ?? [],
+        campaign_ids: (a.campaign_ids as number[] | null) ?? [],
+        spam_rate_pct: rates?.spam_rate_pct ?? null,
+        reply_rate_pct: rates?.reply_rate_pct ?? null,
       } as ClientMailboxRow
     })
   }
@@ -258,37 +252,25 @@ export const getClientDomainHealthTrend = cache(
   async (client: string, days: number = 30): Promise<DomainHealthPoint[]> => {
     const supabase = createServerClient()
 
-    // Get domain IDs for this client
-    const { data: domains } = await supabase
-      .from("mailbox_domains")
-      .select("id")
-      .eq("client", client)
-
-    if (!domains || domains.length === 0) return []
-
-    const domainIds = domains.map((d) => d.id)
-
-    // Fetch domain-level health snapshots (account_id IS NULL)
     const since = new Date()
     since.setDate(since.getDate() - days)
     const sinceStr = since.toISOString().split("T")[0]
 
     const { data: snapshots } = await supabase
-      .from("mailbox_health_snapshots")
+      .from("vw_cockpit_domain_health_daily")
       .select("snapshot_date, warmup_health_pct")
-      .in("domain_id", domainIds)
-      .is("account_id", null)
+      .eq("client", client)
       .gte("snapshot_date", sinceStr)
       .order("snapshot_date", { ascending: true })
 
     if (!snapshots || snapshots.length === 0) return []
 
-    // Group by date and compute average
     const byDate = new Map<string, number[]>()
     for (const s of snapshots) {
+      if (s.warmup_health_pct == null) continue
       const date = s.snapshot_date as string
       if (!byDate.has(date)) byDate.set(date, [])
-      byDate.get(date)!.push(s.warmup_health_pct as number)
+      byDate.get(date)!.push(Number(s.warmup_health_pct))
     }
 
     const result: DomainHealthPoint[] = []
@@ -297,7 +279,7 @@ export const getClientDomainHealthTrend = cache(
       result.push({ date, avgHealth: Math.round(avg * 100) / 100 })
     }
 
-    return result
+    return result.sort((a, b) => a.date.localeCompare(b.date))
   }
 )
 
@@ -306,7 +288,7 @@ export const getClientMailboxSummary = cache(
     const supabase = createServerClient()
 
     const { data } = await supabase
-      .from("mailbox_accounts")
+      .from("vw_cockpit_accounts")
       .select("lifecycle_status")
       .eq("client", client)
 
@@ -327,7 +309,7 @@ export const getClientDomainList = cache(
     const supabase = createServerClient()
 
     const { data } = await supabase
-      .from("mailbox_domains")
+      .from("vw_cockpit_domains")
       .select("id, domain_name, lifecycle_status, latest_warmup_health")
       .eq("client", client)
 
@@ -340,23 +322,14 @@ export const getClientDomainHealthHistory = cache(
   async (client: string, days: number = 5): Promise<DomainHealthDay[]> => {
     const supabase = createServerClient()
 
-    const { data: domains } = await supabase
-      .from("mailbox_domains")
-      .select("id")
-      .eq("client", client)
-
-    if (!domains || domains.length === 0) return []
-
-    const domainIds = domains.map((d) => d.id)
     const since = new Date()
     since.setDate(since.getDate() - days)
     const sinceStr = since.toISOString().split("T")[0]
 
     const { data } = await supabase
-      .from("mailbox_health_snapshots")
+      .from("vw_cockpit_domain_health_daily")
       .select("domain_id, snapshot_date, warmup_health_pct")
-      .in("domain_id", domainIds)
-      .is("account_id", null)
+      .eq("client", client)
       .gte("snapshot_date", sinceStr)
       .order("snapshot_date", { ascending: false })
 
@@ -369,19 +342,11 @@ export const getClientDomainActions = cache(
   async (client: string): Promise<DomainAction[]> => {
     const supabase = createServerClient()
 
-    const { data: domains } = await supabase
-      .from("mailbox_domains")
-      .select("id")
-      .eq("client", client)
-
-    if (!domains || domains.length === 0) return []
-
-    const domainIds = domains.map((d) => d.id)
-
     const { data } = await supabase
-      .from("mailbox_actions_log")
+      .from("vw_cockpit_actions")
       .select("domain_id, created_at")
-      .in("domain_id", domainIds)
+      .eq("client", client)
+      .not("domain_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(100)
 
@@ -390,10 +355,7 @@ export const getClientDomainActions = cache(
   }
 )
 
-// --- New view-based queries (migration 074) ---
-
-// Daily send capacity of a single fully-active mailbox
-const DAILY_CAPACITY_PER_MAILBOX = 30
+// --- Capacity snapshot (per-client infra overview) ---
 
 export interface ClientCapacityRow {
   client: string
@@ -401,6 +363,8 @@ export interface ClientCapacityRow {
   ramping: number
   warming: number
   reserve: number
+  resting: number
+  parked: number
   burnt: number
   draining: number
   retired: number
@@ -431,7 +395,6 @@ export interface ClientCapacityRow {
   in_service_healthy: number
   in_service_burnt: number
   in_service_daily_capacity: number
-  // What capacity would be if every healthy in-service mailbox was at 30/day
   full_capacity: number
   persona_breakdown: Array<{
     persona: string | null
@@ -461,24 +424,51 @@ export interface BurntDomainRow {
 export const getClientCapacitySnapshot = cache(
   async (client: string): Promise<ClientCapacityRow | null> => {
     const supabase = createServerClient()
-    const [hs, cap, config, burntDomains, pendingDecisions, inServiceRows] = await Promise.all([
-      supabase.from("v_client_health_summary").select("*").eq("client", client).maybeSingle(),
-      supabase.from("v_client_capacity").select("*").eq("client", client).maybeSingle(),
-      supabase.from("mailbox_clients").select("min_daily_send_volume,reserve_target_pct").eq("slug", client).maybeSingle(),
-      supabase.from("v_burnt_domains_awaiting_action").select("domain_name").eq("client", client),
-      supabase.from("mailbox_decisions").select("id").eq("client", client).eq("status", "pending"),
-      // Fetch all non-retired mailboxes with _active tag for in-service computation
-      supabase
-        .from("mailbox_accounts")
-        .select("persona, warmup_health_pct, max_email_per_day, smartlead_tags, lifecycle_status, is_master_inbox")
-        .eq("client", client)
-        .eq("is_master_inbox", false)
-        .not("lifecycle_status", "in", "(retired,draining)"),
-    ])
+    const [hs, cap, config, burntDomains, pendingDecisions, inServiceRows] =
+      await Promise.all([
+        supabase
+          .from("vw_cockpit_client_health_summary")
+          .select("*")
+          .eq("client", client)
+          .maybeSingle(),
+        supabase
+          .from("vw_cockpit_client_capacity")
+          .select("*")
+          .eq("client", client)
+          .maybeSingle(),
+        supabase
+          .from("sp_clients")
+          .select("min_daily_send_volume,reserve_target_pct")
+          .eq("slug", client)
+          .maybeSingle(),
+        supabase
+          .from("vw_cockpit_burnt_domains")
+          .select("domain_name")
+          .eq("client", client),
+        supabase
+          .from("sp_decisions")
+          .select("id")
+          .eq("client", client)
+          .eq("status", "proposed"),
+        supabase
+          .from("vw_cockpit_accounts")
+          .select(
+            "persona, warmup_health_pct, max_email_per_day, smartlead_tags, lifecycle_status, is_master_inbox"
+          )
+          .eq("client", client)
+          .eq("is_master_inbox", false)
+          .not("lifecycle_status", "in", "(retired,parked)"),
+      ])
     if (!hs.data) return null
 
-    // Compute in-service metrics from raw tags (single source of truth = Smartlead tag _active)
-    type PersonaAgg = { persona: string | null; in_service_total: number; in_service_healthy: number; in_service_burnt: number; in_service_daily_capacity: number }
+    // In-service = tagged {client}_active in Smartlead
+    type PersonaAgg = {
+      persona: string | null
+      in_service_total: number
+      in_service_healthy: number
+      in_service_burnt: number
+      in_service_daily_capacity: number
+    }
     const personaMap = new Map<string, PersonaAgg>()
     let inServiceTotal = 0
     let inServiceHealthy = 0
@@ -486,10 +476,12 @@ export const getClientCapacitySnapshot = cache(
     let inServiceCapacity = 0
     for (const acc of inServiceRows.data ?? []) {
       const tags = (acc.smartlead_tags as string[] | null) ?? []
-      const tagged = tags.some((t) => t.toLowerCase().endsWith("_active"))
+      const tagged = tags.some((t) =>
+        String(t).toLowerCase().endsWith("_active")
+      )
       if (!tagged) continue
       const health = acc.warmup_health_pct as number | null
-      const cap = (acc.max_email_per_day as number | null) ?? 0
+      const boxCap = (acc.max_email_per_day as number | null) ?? 0
       const isBurnt = health !== null && health < 97
       const key = (acc.persona as string | null) ?? "_"
       const entry = personaMap.get(key) ?? {
@@ -500,35 +492,35 @@ export const getClientCapacitySnapshot = cache(
         in_service_daily_capacity: 0,
       }
       entry.in_service_total++
-      entry.in_service_daily_capacity += cap
+      entry.in_service_daily_capacity += boxCap
       if (isBurnt) entry.in_service_burnt++
       else entry.in_service_healthy++
       personaMap.set(key, entry)
       inServiceTotal++
-      inServiceCapacity += cap
+      inServiceCapacity += boxCap
       if (isBurnt) inServiceBurnt++
       else inServiceHealthy++
     }
     const personaBreakdown = Array.from(personaMap.values()).sort(
-      (a, b) => (b.in_service_total - a.in_service_total)
+      (a, b) => b.in_service_total - a.in_service_total
     )
 
     const active = hs.data.active ?? 0
     const reserve = hs.data.reserve ?? 0
     const targetDailyVolume = config.data?.min_daily_send_volume ?? null
-    const bufferPct = config.data?.reserve_target_pct ? Number(config.data.reserve_target_pct) : 0.5
+    const bufferPct = config.data?.reserve_target_pct
+      ? Number(config.data.reserve_target_pct)
+      : 0.5
 
     const targetActiveMailboxes = targetDailyVolume
       ? Math.ceil(targetDailyVolume / DAILY_CAPACITY_PER_MAILBOX)
       : null
-    const targetReserveMailboxes = targetActiveMailboxes !== null
-      ? Math.ceil(targetActiveMailboxes * bufferPct)
-      : null
+    const targetReserveMailboxes =
+      targetActiveMailboxes !== null
+        ? Math.ceil(targetActiveMailboxes * bufferPct)
+        : null
 
     const activeDailyCapacity = cap.data?.active_daily_capacity ?? 0
-    // Use in-service capacity (includes burnt-but-still-deployed) as the current
-    // operational capacity — this reflects what's actually sending right now.
-    // capacityState + mailboxes_to_order below use this value.
     const effectiveCapacity = inServiceCapacity || activeDailyCapacity
 
     let capacityState: ClientCapacityRow["capacity_state"] = "unset"
@@ -536,7 +528,8 @@ export const getClientCapacitySnapshot = cache(
     if (targetDailyVolume !== null) {
       capacityDeficitVolume = Math.max(targetDailyVolume - effectiveCapacity, 0)
       if (effectiveCapacity >= targetDailyVolume) capacityState = "ok"
-      else if (effectiveCapacity >= targetDailyVolume * 0.8) capacityState = "warning"
+      else if (effectiveCapacity >= targetDailyVolume * 0.8)
+        capacityState = "warning"
       else capacityState = "deficit"
     }
 
@@ -549,11 +542,6 @@ export const getClientCapacitySnapshot = cache(
       else reserveState = "emergency"
     }
 
-    // Deployment plan: how many reserves to deploy to active, how many new to order.
-    // 1. Compute active gap in mailboxes: ceil((target - active_daily) / 30)
-    // 2. Deploy up to `active_gap` reserves to fill that gap
-    // 3. Remaining reserves vs target_reserve tells us the restore-buffer cost
-    // 4. mailboxes_to_order = unfilled active gap + reserve deficit after deploy
     let activeGapMailboxes = 0
     let reservesToDeploy = 0
     let reservesRemainingAfterDeploy = reserve
@@ -577,6 +565,8 @@ export const getClientCapacitySnapshot = cache(
       ramping: hs.data.ramping ?? 0,
       warming: hs.data.warming ?? 0,
       reserve,
+      resting: hs.data.resting ?? 0,
+      parked: hs.data.parked ?? 0,
       burnt: hs.data.burnt ?? 0,
       draining: hs.data.draining ?? 0,
       retired: hs.data.retired ?? 0,
@@ -614,20 +604,23 @@ export const getClientMasterInbox = cache(
   async (client: string): Promise<MasterInboxInfo> => {
     const supabase = createServerClient()
     const [mc, master] = await Promise.all([
-      supabase.from("mailbox_clients").select("master_email,master_domain").eq("slug", client).maybeSingle(),
       supabase
-        .from("mailbox_accounts")
-        .select("email, warmup_health_pct, mailbox_domains(domain_name)")
+        .from("sp_clients")
+        .select("master_email,master_domain")
+        .eq("slug", client)
+        .maybeSingle(),
+      supabase
+        .from("vw_cockpit_accounts")
+        .select("email, warmup_health_pct, domain_name")
         .eq("client", client)
         .eq("is_master_inbox", true)
         .limit(1)
         .maybeSingle(),
     ])
-    const masterDomain = (master.data?.mailbox_domains as unknown as { domain_name: string } | null)?.domain_name ?? null
     return {
       client,
       master_email: mc.data?.master_email ?? master.data?.email ?? null,
-      master_domain: mc.data?.master_domain ?? masterDomain,
+      master_domain: mc.data?.master_domain ?? master.data?.domain_name ?? null,
       health: master.data?.warmup_health_pct ?? null,
       exists: !!(master.data || mc.data?.master_email),
     }
@@ -638,7 +631,7 @@ export const getClientPersonas = cache(
   async (client: string): Promise<string[]> => {
     const supabase = createServerClient()
     const { data } = await supabase
-      .from("mailbox_clients")
+      .from("sp_clients")
       .select("personas")
       .eq("slug", client)
       .maybeSingle()
@@ -650,9 +643,10 @@ export const getClientDomainCandidateCount = cache(
   async (client: string): Promise<number> => {
     const supabase = createServerClient()
     const { count } = await supabase
-      .from("mailbox_domain_candidates")
+      .from("sp_domain_candidates")
       .select("id", { count: "exact", head: true })
       .eq("client", client)
+      .eq("status", "candidate")
     return count ?? 0
   }
 )
@@ -661,7 +655,7 @@ export const getClientBurntDomains = cache(
   async (client: string): Promise<BurntDomainRow[]> => {
     const supabase = createServerClient()
     const { data } = await supabase
-      .from("v_burnt_domains_awaiting_action")
+      .from("vw_cockpit_burnt_domains")
       .select("*")
       .eq("client", client)
       .order("latest_warmup_health", { ascending: true, nullsFirst: true })

@@ -1,20 +1,13 @@
-import { NextRequest, NextResponse } from "next/server"
-import { triggerTask } from "@/lib/trigger-client"
+import { DISABLED_ACTION_MESSAGE } from "@/lib/flags"
 
-export async function POST(request: NextRequest) {
-  const secret = request.headers.get("X-Webhook-Secret")
-  const expected = process.env.SMARTLEAD_WEBHOOK_SECRET
+// Disabled in the sp_* migration build: this route dispatched control-plane
+// actions (Trigger.dev / InboxKit / Smartlead) that operate on the retired
+// legacy model. Re-wired to sp_*-native primitives in a later build.
+const disabled = () =>
+  Response.json({ error: DISABLED_ACTION_MESSAGE, disabled: true }, { status: 410 })
 
-  if (!expected || secret !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
-  try {
-    const { runId } = await triggerTask("sync-campaign-registry")
-    return NextResponse.json({ ok: true, runId }, { status: 200 })
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to trigger sync"
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
+export const GET = disabled
+export const POST = disabled
+export const PUT = disabled
+export const PATCH = disabled
+export const DELETE = disabled

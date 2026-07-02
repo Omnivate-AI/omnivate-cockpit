@@ -4,6 +4,10 @@ import { RealtimeAlerts } from "@/components/layout/realtime-alerts"
 import { getActiveClients } from "@/lib/queries"
 import { DEFAULT_CLIENTS } from "@/lib/types"
 
+// Live dashboard over sp_* — never prerender at build time (no baked data,
+// no DB dependency during builds). Applies to every (dashboard) page.
+export const dynamic = "force-dynamic"
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -11,13 +15,13 @@ export default async function DashboardLayout({
 }) {
   const supabase = createServerClient()
 
-  // Fetch unresolved alert count for sidebar badge
+  // Fetch unresolved alert count for sidebar badge (sp_infra_alerts)
   const { count } = await supabase
-    .from("mailbox_alerts")
+    .from("vw_cockpit_alerts")
     .select("*", { count: "exact", head: true })
-    .eq("status", "pending")
+    .eq("status", "open")
 
-  // Fetch active clients from DB, fallback to hardcoded list
+  // Active clients from sp_clients, fallback to hardcoded list
   let clients: string[]
   try {
     clients = await getActiveClients()

@@ -15,6 +15,8 @@ const STATUS_CHART_COLORS: Record<LifecycleStatus, string> = {
   warming: "hsl(199, 89%, 48%)",
   reserve: "hsl(38, 92%, 50%)",
   ramping: "hsl(217, 91%, 60%)",
+  resting: "hsl(173, 58%, 39%)",
+  parked: "hsl(240, 5%, 65%)",
   active: "hsl(142, 76%, 36%)",
   burnt: "hsl(347, 77%, 50%)",
   draining: "hsl(25, 95%, 53%)",

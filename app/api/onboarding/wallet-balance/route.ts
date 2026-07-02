@@ -1,16 +1,13 @@
-import { getWalletBalance } from "@/lib/inboxkit"
+import { DISABLED_ACTION_MESSAGE } from "@/lib/flags"
 
-export async function GET() {
-  try {
-    const data = await getWalletBalance()
-    // InboxKit returns: { total_credits, credits_used, credits_remaining, ... }
-    const balance = data?.credits_remaining ?? data?.balance ?? 0
-    return Response.json({ balance, currency: "USD" })
-  } catch (error) {
-    console.error("Failed to fetch wallet balance:", error)
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch wallet balance" },
-      { status: 500 }
-    )
-  }
-}
+// Disabled in the sp_* migration build: this route dispatched control-plane
+// actions (Trigger.dev / InboxKit / Smartlead) that operate on the retired
+// legacy model. Re-wired to sp_*-native primitives in a later build.
+const disabled = () =>
+  Response.json({ error: DISABLED_ACTION_MESSAGE, disabled: true }, { status: 410 })
+
+export const GET = disabled
+export const POST = disabled
+export const PUT = disabled
+export const PATCH = disabled
+export const DELETE = disabled

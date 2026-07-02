@@ -1,5 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server"
 
+// sp_infra_alerts has no separate "dismissed" state — a dismissal is a
+// resolution with a note saying so.
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -14,9 +16,12 @@ export async function POST(
   const supabase = createServerClient()
 
   const { data, error } = await supabase
-    .from("mailbox_alerts")
+    .from("sp_infra_alerts")
     .update({
-      status: "dismissed",
+      status: "resolved",
+      resolved_at: new Date().toISOString(),
+      resolved_by: "cockpit",
+      resolution_note: "Dismissed via dashboard",
     })
     .eq("id", alertId)
     .select("id")

@@ -22,11 +22,12 @@ export async function POST(
   const supabase = createServerClient()
 
   const { data, error } = await supabase
-    .from("mailbox_alerts")
+    .from("sp_infra_alerts")
     .update({
       status: "resolved",
       resolved_at: new Date().toISOString(),
-      resolved_by: notes || "Resolved via dashboard",
+      resolved_by: "cockpit",
+      resolution_note: notes || "Resolved via dashboard",
     })
     .eq("id", alertId)
     .select("id")

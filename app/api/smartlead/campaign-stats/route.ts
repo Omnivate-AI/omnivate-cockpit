@@ -1,8 +1,12 @@
 import { NextRequest } from "next/server"
+import { createServerClient } from "@/lib/supabase/server"
 
 /**
  * GET /api/smartlead/campaign-stats?campaign_id=XXX
- * Fetches real-time campaign analytics from the Smartlead API.
+ *
+ * DEF-1 fix: this route used to call the Smartlead REST API live (with the
+ * API key in the query string). Same response shape, but the numbers now
+ * come from the sp_* read-models — the app never talks to Smartlead.
  */
 export async function GET(request: NextRequest) {
   const campaignId = request.nextUrl.searchParams.get("campaign_id")
@@ -10,52 +14,46 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: "campaign_id is required" }, { status: 400 })
   }
 
-  const apiKey = process.env.SMARTLEAD_API_KEY
-  if (!apiKey) {
-    return Response.json(
-      { error: "SMARTLEAD_API_KEY not configured" },
-      { status: 500 }
-    )
-  }
+  const numId = Number(campaignId)
+  const supabase = createServerClient()
 
-  try {
-    const res = await fetch(
-      `https://server.smartlead.ai/api/v1/campaigns/${campaignId}/analytics?api_key=${apiKey}`,
-      { method: "GET", headers: { Accept: "application/json" } }
-    )
-
-    if (!res.ok) {
-      const text = await res.text()
-      return Response.json(
-        { error: `Smartlead API error: ${text}` },
-        { status: res.status }
+  const [{ data: campaign }, { data: latestFact }] = await Promise.all([
+    supabase
+      .from("vw_cockpit_campaigns")
+      .select(
+        "smartlead_campaign_id, campaign_name, status, all_time_emails_sent, all_time_replies, all_time_interested, total_leads"
       )
-    }
+      .eq("smartlead_campaign_id", numId)
+      .maybeSingle(),
+    supabase
+      .from("vw_cockpit_campaign_daily")
+      .select("snapshot_date, bounced, unsubscribes, opens")
+      .eq("campaign_id", numId)
+      .order("snapshot_date", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
 
-    const data = await res.json()
-
-    // Smartlead analytics response may be wrapped in {data: ...} or be the object directly
-    const stats = data?.data ?? data
-
-    return Response.json({
-      campaign_id: Number(campaignId),
-      total_leads: stats.total_leads ?? stats.totalLeads ?? 0,
-      emails_sent: stats.emails_sent ?? stats.emailsSent ?? 0,
-      emails_opened: stats.emails_opened ?? stats.emailsOpened ?? 0,
-      replies: stats.replies ?? stats.totalReplies ?? 0,
-      positive_replies: stats.positive_replies ?? stats.positiveReplies ?? 0,
-      bounced: stats.bounced ?? stats.totalBounced ?? 0,
-      unsubscribed: stats.unsubscribed ?? stats.totalUnsubscribed ?? 0,
-      open_rate: stats.open_rate ?? stats.openRate ?? null,
-      reply_rate: stats.reply_rate ?? stats.replyRate ?? null,
-      bounce_rate: stats.bounce_rate ?? stats.bounceRate ?? null,
-      fetched_at: new Date().toISOString(),
-    })
-  } catch (err) {
-    console.error("Failed to fetch Smartlead campaign stats:", err)
-    return Response.json(
-      { error: "Failed to fetch campaign stats" },
-      { status: 500 }
-    )
+  if (!campaign) {
+    return Response.json({ error: "Campaign not found" }, { status: 404 })
   }
+
+  const emailsSent = campaign.all_time_emails_sent ?? 0
+  const replies = campaign.all_time_replies ?? 0
+
+  return Response.json({
+    campaign_id: numId,
+    total_leads: campaign.total_leads ?? 0,
+    emails_sent: emailsSent,
+    emails_opened: latestFact?.opens ?? 0,
+    replies,
+    positive_replies: campaign.all_time_interested ?? 0,
+    bounced: latestFact?.bounced ?? 0,
+    unsubscribed: latestFact?.unsubscribes ?? 0,
+    open_rate: null,
+    reply_rate: emailsSent > 0 ? Number(((replies / emailsSent) * 100).toFixed(2)) : null,
+    bounce_rate: null,
+    fetched_at: new Date().toISOString(),
+    source: "sp_campaign_lifetime",
+  })
 }

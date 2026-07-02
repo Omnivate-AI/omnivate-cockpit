@@ -20,21 +20,23 @@ interface AlertPayload {
 export function RealtimeAlerts() {
   const router = useRouter()
 
-  // Subscribe to INSERT events on mailbox_alerts for toast notifications
+  // Subscribe to INSERT events on sp_infra_alerts for toast notifications.
+  // (No-op if the table isn't in the realtime publication — degrades silently.)
   useEffect(() => {
     const supabase = createClient()
     const channel = supabase
       .channel("alert-insert-toasts")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "mailbox_alerts" },
+        { event: "INSERT", schema: "public", table: "sp_infra_alerts" },
         (payload) => {
           const alert = payload.new as AlertPayload
-          if (alert.severity !== "critical" && alert.severity !== "warning") {
+          // infra alerts: high/medium/low · perf alerts: critical/warning/info
+          if (!["critical", "warning", "high", "medium"].includes(alert.severity)) {
             return
           }
 
-          const isCritical = alert.severity === "critical"
+          const isCritical = ["critical", "high"].includes(alert.severity)
           const clientSlug = alert.client
 
           toast(alert.title, {
@@ -68,7 +70,7 @@ export function RealtimeAlerts() {
     router.refresh()
   }, [router])
 
-  useRealtimeTable("mailbox_domains", handleDomainChange)
+  useRealtimeTable("sp_domains", handleDomainChange)
 
   return null
 }

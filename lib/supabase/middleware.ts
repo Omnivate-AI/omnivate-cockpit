@@ -26,8 +26,21 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Refresh session (no redirect — all routes are public)
-  await supabase.auth.getUser()
+  // Refresh session AND gate every route behind auth (AUTH-1 / NFR-2).
+  // Only /login is public — this app fronts live client data.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const pathname = request.nextUrl.pathname
+  const isPublic = pathname === "/login" || pathname.startsWith("/login/")
+
+  if (!user && !isPublic) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/login"
+    url.search = ""
+    return NextResponse.redirect(url)
+  }
 
   return supabaseResponse
 }

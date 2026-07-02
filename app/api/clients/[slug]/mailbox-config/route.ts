@@ -31,7 +31,7 @@ export async function POST(
 
   const supabase = createServerClient()
   const { error } = await supabase
-    .from("mailbox_clients")
+    .from("sp_clients")
     .update({ ...update, updated_at: new Date().toISOString() })
     .eq("slug", slug)
 

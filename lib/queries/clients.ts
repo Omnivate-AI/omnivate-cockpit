@@ -2,13 +2,10 @@ import { cache } from "react"
 import { createServerClient } from "@/lib/supabase/server"
 import type {
   LifecycleStatus,
-  MailboxAccount,
   MailboxAction,
   MailboxAlert,
   MailboxDomain,
-  HealthSnapshot,
   ClientSetup,
-  SetupStep,
 } from "@/lib/types"
 
 // --- Re-exported interfaces (originally from queries.ts) ---
@@ -34,7 +31,6 @@ export interface ClientDomainRow extends MailboxDomain {
 
 export interface AlertWithDomain extends MailboxAlert {
   domain_name: string
-  client: string
 }
 
 export interface AuditLogRow extends MailboxAction {
@@ -48,15 +44,15 @@ export interface SetupListItem extends ClientSetup {
 }
 
 export interface SetupWithSteps extends ClientSetup {
-  steps: SetupStep[]
+  steps: never[]
 }
 
 // --- Functions ---
 
 /**
- * Resolve a client slug to its child slugs (from client_analytics_config).
- * If the slug has children (via parent_client), returns those child slugs.
- * Otherwise returns [slug] itself.
+ * Resolve a client slug to its child slugs (from client_analytics_config,
+ * the app-owned targets/hierarchy table). If the slug has children (via
+ * parent_client), returns those child slugs. Otherwise returns [slug].
  */
 export const resolveClientSlugs = cache(
   async (slug: string): Promise<string[]> => {
@@ -75,18 +71,47 @@ export const resolveClientSlugs = cache(
   }
 )
 
+/**
+ * Active clients = sp_clients.active (maintained by the perf/infra plugins).
+ */
 export const getActiveClients = cache(async (): Promise<string[]> => {
   const supabase = createServerClient()
 
   const { data } = await supabase
-    .from("client_setups")
-    .select("client_slug")
-    .not("status", "in", '("draft","failed")')
-    .order("client_slug", { ascending: true })
+    .from("sp_clients")
+    .select("slug")
+    .eq("active", true)
+    .order("slug", { ascending: true })
 
   if (!data) return []
-  return data.map((row) => row.client_slug)
+  return data.map((row) => row.slug)
 })
+
+export interface SpClientRow {
+  id: number
+  slug: string
+  display_name: string | null
+  active: boolean
+  master_email: string | null
+  master_domain: string | null
+  min_daily_send_volume: number | null
+  reserve_target_pct: number | null
+  personas: string[] | null
+}
+
+export const getSpClient = cache(
+  async (slug: string): Promise<SpClientRow | null> => {
+    const supabase = createServerClient()
+    const { data } = await supabase
+      .from("sp_clients")
+      .select(
+        "id, slug, display_name, active, master_email, master_domain, min_daily_send_volume, reserve_target_pct, personas"
+      )
+      .eq("slug", slug)
+      .maybeSingle()
+    return (data as SpClientRow | null) ?? null
+  }
+)
 
 export const getClientStats = cache(
   async (client: string): Promise<ClientStats> => {
@@ -94,23 +119,23 @@ export const getClientStats = cache(
 
     const [domainsRes, accountsRes, healthRes, alertsRes] = await Promise.all([
       supabase
-        .from("mailbox_domains")
+        .from("vw_cockpit_domains")
         .select("*", { count: "exact", head: true })
         .eq("client", client),
       supabase
-        .from("mailbox_accounts")
+        .from("vw_cockpit_accounts")
         .select("*", { count: "exact", head: true })
         .eq("client", client),
       supabase
-        .from("mailbox_domains")
+        .from("vw_cockpit_domains")
         .select("warmup_health_avg")
         .eq("client", client)
         .not("warmup_health_avg", "is", null),
       supabase
-        .from("mailbox_alerts")
-        .select("*, mailbox_domains!inner(client)")
-        .eq("status", "pending")
-        .eq("mailbox_domains.client", client),
+        .from("vw_cockpit_alerts")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "open")
+        .eq("client", client),
     ])
 
     let avgHealth: number | null = null
@@ -126,21 +151,17 @@ export const getClientStats = cache(
       totalDomains: domainsRes.count ?? 0,
       totalAccounts: accountsRes.count ?? 0,
       avgHealth,
-      activeAlerts: alertsRes.data?.length ?? 0,
+      activeAlerts: alertsRes.count ?? 0,
     }
   }
 )
 
+/**
+ * Onboarding is disabled in this build (no sp_* backend for client_setups).
+ * Returning null means the client page never shows the setup gate.
+ */
 export const getSetupBySlug = cache(
-  async (slug: string): Promise<ClientSetup | null> => {
-    const supabase = createServerClient()
-    const { data } = await supabase
-      .from("client_setups")
-      .select("*")
-      .eq("client_slug", slug)
-      .single()
-    return data as ClientSetup | null
-  }
+  async (_slug: string): Promise<ClientSetup | null> => null
 )
 
 export const getClientBreakdown = cache(
@@ -148,43 +169,39 @@ export const getClientBreakdown = cache(
     const supabase = createServerClient()
 
     let domainQuery = supabase
-      .from("mailbox_domains")
-      .select("client, lifecycle_status, warmup_health_avg")
-    let accountQuery = supabase.from("mailbox_accounts").select("client")
+      .from("vw_cockpit_domains")
+      .select("client, lifecycle_status, warmup_health_avg, account_count")
 
     if (client) {
       domainQuery = domainQuery.eq("client", client)
-      accountQuery = accountQuery.eq("client", client)
     }
 
-    const [domainsRes, accountsRes] = await Promise.all([
-      domainQuery,
-      accountQuery,
-    ])
-
-    const domains = domainsRes.data ?? []
-    const accounts = accountsRes.data ?? []
+    const { data: domains } = await domainQuery
 
     // Group by client
     const clientMap = new Map<
       string,
       {
         totalDomains: number
+        totalAccounts: number
         healthValues: number[]
         statusCounts: Partial<Record<LifecycleStatus, number>>
       }
     >()
 
-    for (const d of domains) {
+    for (const d of domains ?? []) {
+      if (!d.client) continue
       if (!clientMap.has(d.client)) {
         clientMap.set(d.client, {
           totalDomains: 0,
+          totalAccounts: 0,
           healthValues: [],
           statusCounts: {},
         })
       }
       const entry = clientMap.get(d.client)!
       entry.totalDomains++
+      entry.totalAccounts += d.account_count ?? 0
       if (d.warmup_health_avg != null) {
         entry.healthValues.push(d.warmup_health_avg)
       }
@@ -192,18 +209,12 @@ export const getClientBreakdown = cache(
       entry.statusCounts[status] = (entry.statusCounts[status] ?? 0) + 1
     }
 
-    // Count accounts per client
-    const accountCounts = new Map<string, number>()
-    for (const a of accounts) {
-      accountCounts.set(a.client, (accountCounts.get(a.client) ?? 0) + 1)
-    }
-
     const rows: ClientBreakdownRow[] = []
     for (const [clientName, data] of clientMap) {
       rows.push({
         client: clientName,
         totalDomains: data.totalDomains,
-        totalAccounts: accountCounts.get(clientName) ?? 0,
+        totalAccounts: data.totalAccounts,
         avgHealth:
           data.healthValues.length > 0
             ? data.healthValues.reduce((a, b) => a + b, 0) /
@@ -213,7 +224,6 @@ export const getClientBreakdown = cache(
       })
     }
 
-    // Sort by client name
     rows.sort((a, b) => a.client.localeCompare(b.client))
 
     return rows
@@ -225,19 +235,12 @@ export const getClientDomains = cache(
     const supabase = createServerClient()
 
     const { data } = await supabase
-      .from("mailbox_domains")
-      .select("*, mailbox_accounts(count)")
+      .from("vw_cockpit_domains")
+      .select("*")
       .eq("client", client)
       .order("warmup_health_avg", { ascending: true, nullsFirst: false })
 
-    if (!data) return []
-
-    return data.map((d) => {
-      const accountArr = d.mailbox_accounts as unknown as { count: number }[]
-      const account_count = accountArr?.[0]?.count ?? 0
-      const { mailbox_accounts: _, ...domain } = d
-      return { ...domain, account_count } as ClientDomainRow
-    })
+    return (data ?? []) as ClientDomainRow[]
   }
 )
 
@@ -252,11 +255,9 @@ export const getClientHealthTrend = cache(
     since.setDate(since.getDate() - days)
 
     const { data } = await supabase
-      .from("mailbox_health_snapshots")
-      .select(
-        "snapshot_date, avg_health_pct, mailbox_domains!inner(client)"
-      )
-      .eq("mailbox_domains.client", client)
+      .from("vw_cockpit_domain_health_daily")
+      .select("snapshot_date, avg_health_pct")
+      .eq("client", client)
       .gte("snapshot_date", since.toISOString().split("T")[0])
       .order("snapshot_date", { ascending: true })
 
@@ -293,29 +294,17 @@ export const getClientAlerts = cache(
     const supabase = createServerClient()
 
     const { data } = await supabase
-      .from("mailbox_alerts")
-      .select("*, mailbox_domains(domain_name, client)")
-      .eq("status", resolved ? "resolved" : "pending")
+      .from("vw_cockpit_alerts")
+      .select("*")
+      .eq("client", client)
+      .eq("status", resolved ? "resolved" : "open")
       .order("created_at", { ascending: false })
-      .limit(limit * 3) // over-fetch since we filter post-fetch
+      .limit(limit)
 
-    if (!data) return []
-
-    return data
-      .map((a) => {
-        const domain = a.mailbox_domains as unknown as {
-          domain_name: string
-          client: string
-        } | null
-        const { mailbox_domains: _, ...rest } = a
-        return {
-          ...rest,
-          domain_name: domain?.domain_name ?? "Unknown",
-          client: domain?.client ?? "",
-        } as AlertWithDomain
-      })
-      .filter((a) => a.client === client)
-      .slice(0, limit)
+    return ((data ?? []) as AlertWithDomain[]).map((a) => ({
+      ...a,
+      domain_name: a.domain_name ?? "—",
+    }))
   }
 )
 
@@ -324,105 +313,27 @@ export const getClientActions = cache(
     const supabase = createServerClient()
 
     const { data } = await supabase
-      .from("mailbox_actions_log")
-      .select("*, mailbox_domains(domain_name, client)")
+      .from("vw_cockpit_actions")
+      .select("*")
+      .eq("client", client)
       .order("created_at", { ascending: false })
-      .limit(limit * 3) // over-fetch since we filter post-fetch
+      .limit(limit)
 
-    if (!data) return []
-
-    return data
-      .map((a) => {
-        const domain = a.mailbox_domains as unknown as {
-          domain_name: string
-          client: string
-        } | null
-        const { mailbox_domains: _, ...rest } = a
-        return {
-          ...rest,
-          domain_name: domain?.domain_name ?? "Unknown",
-          client: domain?.client ?? "",
-        } as AuditLogRow
-      })
-      .filter((a) => a.client === client)
-      .slice(0, limit)
+    return ((data ?? []) as AuditLogRow[]).map((a) => ({
+      ...a,
+      domain_name: a.domain_name ?? "—",
+    }))
   }
 )
 
-// --- Onboarding queries ---
+// --- Onboarding queries (disabled in this build — no sp_* backend) ---
 
-export const getAllSetups = cache(async (): Promise<SetupListItem[]> => {
-  const supabase = createServerClient()
-
-  const { data: setups } = await supabase
-    .from("client_setups")
-    .select("*")
-    .order("created_at", { ascending: false })
-
-  if (!setups || setups.length === 0) return []
-
-  // Fetch step counts per setup
-  const setupIds = setups.map((s) => s.id)
-  const { data: steps } = await supabase
-    .from("setup_steps")
-    .select("setup_id, status")
-    .in("setup_id", setupIds)
-
-  // Build step count maps
-  const totalMap = new Map<number, number>()
-  const completedMap = new Map<number, number>()
-  if (steps) {
-    for (const s of steps) {
-      totalMap.set(s.setup_id, (totalMap.get(s.setup_id) ?? 0) + 1)
-      if (s.status === "completed") {
-        completedMap.set(
-          s.setup_id,
-          (completedMap.get(s.setup_id) ?? 0) + 1
-        )
-      }
-    }
-  }
-
-  return (setups as ClientSetup[]).map((setup) => ({
-    ...setup,
-    completed_steps: completedMap.get(setup.id) ?? 0,
-    total_steps: totalMap.get(setup.id) ?? 10,
-  }))
-})
+export const getAllSetups = cache(async (): Promise<SetupListItem[]> => [])
 
 export const getSetupById = cache(
-  async (id: number): Promise<ClientSetup | null> => {
-    const supabase = createServerClient()
-    const { data } = await supabase
-      .from("client_setups")
-      .select("*")
-      .eq("id", id)
-      .single()
-    return data as ClientSetup | null
-  }
+  async (_id: number): Promise<ClientSetup | null> => null
 )
 
 export const getSetupWithSteps = cache(
-  async (id: number): Promise<SetupWithSteps | null> => {
-    const supabase = createServerClient()
-
-    const { data: setup } = await supabase
-      .from("client_setups")
-      .select("*")
-      .eq("id", id)
-      .single()
-
-    if (!setup) return null
-
-    const { data: steps } = await supabase
-      .from("setup_steps")
-      .select("*")
-      .eq("setup_id", id)
-      .order("id", { ascending: true })
-
-    return {
-      ...(setup as ClientSetup),
-      steps: (steps ?? []) as SetupStep[],
-    }
-  }
+  async (_id: number): Promise<SetupWithSteps | null> => null
 )

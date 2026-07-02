@@ -26,12 +26,12 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(days / 7)}w ago`
 }
 
-function SeverityBadge({ severity }: { severity: "warning" | "critical" }) {
+function SeverityBadge({ severity }: { severity: string }) {
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize",
-        severity === "critical"
+        ["critical", "high"].includes(severity)
           ? "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400"
           : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
       )}
@@ -54,9 +54,13 @@ export function AlertsTable({ unresolved: initialUnresolved, recentlyResolved: i
     try {
       const res = await fetch(`/api/alerts/${alert.id}/acknowledge`, { method: "POST" })
       if (!res.ok) throw new Error("Failed to acknowledge")
-      setUnresolved((prev) =>
-        prev.map((a) => (a.id === alert.id ? { ...a, status: "dismissed" as const } : a))
-      )
+      // sp_infra_alerts has no separate "dismissed" state — an ack resolves it
+      const now = new Date().toISOString()
+      setUnresolved((prev) => prev.filter((a) => a.id !== alert.id))
+      setResolved((prev) => [
+        { ...alert, status: "resolved" as const, resolved_at: now, resolution_note: "Dismissed via dashboard" },
+        ...prev,
+      ])
       toast.success("Alert acknowledged")
     } catch {
       toast.error("Failed to acknowledge alert")
@@ -144,11 +148,11 @@ export function AlertsTable({ unresolved: initialUnresolved, recentlyResolved: i
                         variant="outline"
                         size="sm"
                         onClick={() => handleAcknowledge(alert)}
-                        disabled={loadingId === alert.id || alert.status === "dismissed"}
-                        title={alert.status === "dismissed" ? "Already acknowledged" : "Acknowledge"}
+                        disabled={loadingId === alert.id}
+                        title="Acknowledge"
                       >
                         <Eye className="h-3.5 w-3.5 mr-1" />
-                        {alert.status === "dismissed" ? "Ack'd" : "Ack"}
+                        Ack
                       </Button>
                       <Button
                         variant="outline"

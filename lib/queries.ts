@@ -17,7 +17,7 @@ export * from "./queries/alerts"
 export * from "./queries/pipelines"
 
 // Import types needed locally from modules
-import type { AlertWithDomain, AuditLogRow } from "./queries/clients"
+import type { AuditLogRow } from "./queries/clients"
 
 // --- Interfaces for functions that remain here ---
 
@@ -113,24 +113,25 @@ export const getDashboardStats = cache(
     const supabase = createServerClient()
 
     let domainQuery = supabase
-      .from("mailbox_domains")
+      .from("vw_cockpit_domains")
       .select("*", { count: "exact", head: true })
     let accountQuery = supabase
-      .from("mailbox_accounts")
+      .from("vw_cockpit_accounts")
       .select("*", { count: "exact", head: true })
     let healthQuery = supabase
-      .from("mailbox_domains")
+      .from("vw_cockpit_domains")
       .select("warmup_health_avg")
       .not("warmup_health_avg", "is", null)
     let alertQuery = supabase
-      .from("mailbox_alerts")
+      .from("vw_cockpit_alerts")
       .select("*", { count: "exact", head: true })
-      .eq("status", "pending")
+      .eq("status", "open")
 
     if (client) {
       domainQuery = domainQuery.eq("client", client)
       accountQuery = accountQuery.eq("client", client)
       healthQuery = healthQuery.eq("client", client)
+      alertQuery = alertQuery.eq("client", client)
     }
 
     const [domains, accounts, health, alerts] = await Promise.all([
@@ -162,7 +163,7 @@ export const getStatusDistribution = cache(
   async (client?: string | null): Promise<StatusDistributionItem[]> => {
     const supabase = createServerClient()
 
-    let query = supabase.from("mailbox_domains").select("lifecycle_status")
+    let query = supabase.from("vw_cockpit_domains").select("lifecycle_status")
     if (client) {
       query = query.eq("client", client)
     }
@@ -209,8 +210,8 @@ export const getDomainList = cache(
     } = filters
 
     let query = supabase
-      .from("mailbox_domains")
-      .select("*, mailbox_accounts(count)", { count: "exact" })
+      .from("vw_cockpit_domains")
+      .select("*", { count: "exact" })
 
     if (client) {
       query = query.eq("client", client)
@@ -249,14 +250,7 @@ export const getDomainList = cache(
       return { domains: [], totalCount: 0 }
     }
 
-    const domains: DomainListRow[] = data.map((d) => {
-      const accountArr = d.mailbox_accounts as unknown as { count: number }[]
-      const account_count = accountArr?.[0]?.count ?? 0
-      const { mailbox_accounts: _, ...domain } = d
-      return { ...domain, account_count } as DomainListRow
-    })
-
-    return { domains, totalCount: count ?? 0 }
+    return { domains: data as DomainListRow[], totalCount: count ?? 0 }
   }
 )
 
@@ -266,7 +260,7 @@ export const getDomainById = cache(
   async (id: number): Promise<MailboxDomain | null> => {
     const supabase = createServerClient()
     const { data } = await supabase
-      .from("mailbox_domains")
+      .from("vw_cockpit_domains")
       .select("*")
       .eq("id", id)
       .single()
@@ -278,7 +272,7 @@ export const getDomainAccounts = cache(
   async (domainId: number): Promise<MailboxAccount[]> => {
     const supabase = createServerClient()
     const { data } = await supabase
-      .from("mailbox_accounts")
+      .from("vw_cockpit_accounts")
       .select("*")
       .eq("domain_id", domainId)
       .order("email", { ascending: true })
@@ -293,7 +287,7 @@ export const getDomainSnapshots = cache(
     since.setDate(since.getDate() - days)
 
     const { data } = await supabase
-      .from("mailbox_health_snapshots")
+      .from("vw_cockpit_domain_health_daily")
       .select("*")
       .eq("domain_id", domainId)
       .gte("snapshot_date", since.toISOString().split("T")[0])
@@ -306,7 +300,7 @@ export const getDomainActions = cache(
   async (domainId: number): Promise<MailboxAction[]> => {
     const supabase = createServerClient()
     const { data } = await supabase
-      .from("mailbox_actions_log")
+      .from("vw_cockpit_actions")
       .select("*")
       .eq("domain_id", domainId)
       .order("created_at", { ascending: false })
@@ -327,37 +321,23 @@ export const getHealthTrends = cache(
     const since = new Date()
     since.setDate(since.getDate() - days)
 
-    const query = supabase
-      .from("mailbox_health_snapshots")
-      .select(
-        "snapshot_date, avg_health_pct, domain_id, mailbox_domains(domain_name, client)"
-      )
+    let query = supabase
+      .from("vw_cockpit_domain_health_daily")
+      .select("snapshot_date, avg_health_pct, domain_id, domain_name, client")
       .gte("snapshot_date", since.toISOString().split("T")[0])
       .order("snapshot_date", { ascending: true })
 
-    const { data } = await query
-
-    if (!data) return []
-
-    let results = data.map((s) => {
-      const domain = s.mailbox_domains as unknown as {
-        domain_name: string
-        client: string
-      } | null
-      return {
-        snapshot_date: s.snapshot_date,
-        domain_name: domain?.domain_name ?? "Unknown",
-        client: domain?.client ?? "",
-        domain_id: s.domain_id,
-        avg_health_pct: s.avg_health_pct,
-      }
-    })
-
     if (client) {
-      results = results.filter((r) => r.client === client)
+      query = query.eq("client", client)
     }
 
-    return results
+    const { data } = await query
+
+    return ((data ?? []) as HealthTrendPoint[]).map((s) => ({
+      ...s,
+      domain_name: s.domain_name ?? "Unknown",
+      client: s.client ?? "",
+    }))
   }
 )
 
@@ -366,7 +346,7 @@ export const getDomainHealthCards = cache(
     const supabase = createServerClient()
 
     let domainQuery = supabase
-      .from("mailbox_domains")
+      .from("vw_cockpit_domains")
       .select("id, domain_name, client, lifecycle_status, warmup_health_avg")
     if (client) {
       domainQuery = domainQuery.eq("client", client)
@@ -383,7 +363,7 @@ export const getDomainHealthCards = cache(
     if (domainIds.length === 0) return []
 
     const { data: oldSnapshots } = await supabase
-      .from("mailbox_health_snapshots")
+      .from("vw_cockpit_domain_health_daily")
       .select("domain_id, avg_health_pct, snapshot_date")
       .in("domain_id", domainIds)
       .lte("snapshot_date", compareDate)
@@ -422,7 +402,7 @@ export const getHealthAggregates = cache(
     const supabase = createServerClient()
 
     let query = supabase
-      .from("mailbox_domains")
+      .from("vw_cockpit_domains")
       .select("warmup_health_avg")
       .not("warmup_health_avg", "is", null)
     if (client) {
@@ -463,12 +443,12 @@ export const getMasterInboxEmail = cache(
   async (client: string): Promise<string | null> => {
     const supabase = createServerClient()
     const { data } = await supabase
-      .from("mailbox_accounts")
+      .from("vw_cockpit_accounts")
       .select("email")
       .eq("client", client)
       .eq("is_master_inbox", true)
       .limit(1)
-      .single()
+      .maybeSingle()
     return data?.email ?? null
   }
 )
@@ -478,32 +458,26 @@ export const getEligibleAccounts = cache(
     const supabase = createServerClient()
 
     const { data } = await supabase
-      .from("mailbox_accounts")
+      .from("vw_cockpit_accounts")
       .select(
-        "id, email, domain_id, warmup_health_pct, is_master_inbox, lifecycle_status, mailbox_domains!inner(domain_name, warmup_health_avg)"
+        "id, email, domain_id, domain_name, warmup_health_pct, is_master_inbox, lifecycle_status"
       )
       .eq("client", client)
-      .in("lifecycle_status", ["active", "ramping"])
+      .in("lifecycle_status", ["active", "reserve"])
       .gt("warmup_health_pct", 90)
       .order("email", { ascending: true })
 
     if (!data) return []
 
-    return data.map((a) => {
-      const domain = a.mailbox_domains as unknown as {
-        domain_name: string
-        warmup_health_avg: number | null
-      }
-      return {
-        id: a.id,
-        email: a.email,
-        domain_id: a.domain_id,
-        domain_name: domain?.domain_name ?? "",
-        warmup_health_pct: a.warmup_health_pct,
-        domain_health: domain?.warmup_health_avg ?? null,
-        is_master_inbox: a.is_master_inbox,
-      }
-    })
+    return data.map((a) => ({
+      id: a.id,
+      email: a.email,
+      domain_id: a.domain_id ?? 0,
+      domain_name: a.domain_name ?? "",
+      warmup_health_pct: a.warmup_health_pct,
+      domain_health: null,
+      is_master_inbox: a.is_master_inbox,
+    }))
   }
 )
 
@@ -523,8 +497,8 @@ export const getAuditLog = cache(
     } = filters
 
     let query = supabase
-      .from("mailbox_actions_log")
-      .select("*, mailbox_domains(domain_name, client)", { count: "exact" })
+      .from("vw_cockpit_actions")
+      .select("*", { count: "exact" })
       .order("created_at", { ascending: false })
 
     if (actionType) {
@@ -532,6 +506,9 @@ export const getAuditLog = cache(
     }
     if (status) {
       query = query.eq("status", status)
+    }
+    if (client) {
+      query = query.eq("client", client)
     }
     if (dateRange && dateRange !== "all") {
       const since = new Date()
@@ -548,24 +525,13 @@ export const getAuditLog = cache(
       return { actions: [], totalCount: 0 }
     }
 
-    let actions: AuditLogRow[] = data.map((a) => {
-      const domain = a.mailbox_domains as unknown as {
-        domain_name: string
-        client: string
-      } | null
-      const { mailbox_domains: _, ...rest } = a
-      return {
-        ...rest,
-        domain_name: domain?.domain_name ?? "Unknown",
-        client: domain?.client ?? "",
-      } as AuditLogRow
-    })
+    const actions: AuditLogRow[] = (data as AuditLogRow[]).map((a) => ({
+      ...a,
+      domain_name: a.domain_name ?? "—",
+      client: a.client ?? "",
+    }))
 
-    if (client) {
-      actions = actions.filter((a) => a.client === client)
-    }
-
-    return { actions, totalCount: client ? actions.length : (count ?? 0) }
+    return { actions, totalCount: count ?? 0 }
   }
 )
 
@@ -578,8 +544,8 @@ export const getAuditLogForExport = cache(
     const { actionType, client, status, dateRange } = filters
 
     let query = supabase
-      .from("mailbox_actions_log")
-      .select("*, mailbox_domains(domain_name, client)")
+      .from("vw_cockpit_actions")
+      .select("*")
       .order("created_at", { ascending: false })
       .limit(1000)
 
@@ -588,6 +554,9 @@ export const getAuditLogForExport = cache(
     }
     if (status) {
       query = query.eq("status", status)
+    }
+    if (client) {
+      query = query.eq("client", client)
     }
     if (dateRange && dateRange !== "all") {
       const since = new Date()
@@ -599,24 +568,11 @@ export const getAuditLogForExport = cache(
 
     if (!data) return []
 
-    let actions: AuditLogRow[] = data.map((a) => {
-      const domain = a.mailbox_domains as unknown as {
-        domain_name: string
-        client: string
-      } | null
-      const { mailbox_domains: _, ...rest } = a
-      return {
-        ...rest,
-        domain_name: domain?.domain_name ?? "Unknown",
-        client: domain?.client ?? "",
-      } as AuditLogRow
-    })
-
-    if (client) {
-      actions = actions.filter((a) => a.client === client)
-    }
-
-    return actions
+    return (data as AuditLogRow[]).map((a) => ({
+      ...a,
+      domain_name: a.domain_name ?? "—",
+      client: a.client ?? "",
+    }))
   }
 )
 
@@ -626,7 +582,7 @@ export const getSettingsPageData = cache(
   async (): Promise<SettingsPageData> => {
     const supabase = createServerClient()
 
-    const [thresholdRes, domainsRes, accountsRes, lastSyncRes] =
+    const [thresholdRes, domainsRes, accountsRes, freshnessRes] =
       await Promise.all([
         supabase
           .from("app_settings")
@@ -634,25 +590,43 @@ export const getSettingsPageData = cache(
           .eq("key", "burn_threshold")
           .single(),
         supabase
-          .from("mailbox_domains")
+          .from("vw_cockpit_domains")
           .select("*", { count: "exact", head: true }),
         supabase
-          .from("mailbox_accounts")
+          .from("vw_cockpit_accounts")
           .select("*", { count: "exact", head: true }),
-        supabase
-          .from("mailbox_health_snapshots")
-          .select("created_at")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single(),
+        supabase.from("vw_cockpit_freshness").select("*").single(),
       ])
 
     return {
       burnThreshold: thresholdRes.data ? Number(thresholdRes.data.value) : 97,
       totalDomains: domainsRes.count ?? 0,
       totalAccounts: accountsRes.count ?? 0,
-      lastSync: lastSyncRes.data?.created_at ?? null,
+      lastSync: freshnessRes.data?.last_sync_at ?? null,
     }
   }
 )
 
+// --- Freshness (global "data as-of") ---
+
+export interface FreshnessInfo {
+  lastSyncAt: string | null
+  latestFactDate: string | null
+  latestSendEventAt: string | null
+  latestReplyAt: string | null
+}
+
+export const getFreshness = cache(async (): Promise<FreshnessInfo> => {
+  const supabase = createServerClient()
+  const { data } = await supabase
+    .from("vw_cockpit_freshness")
+    .select("*")
+    .single()
+
+  return {
+    lastSyncAt: data?.last_sync_at ?? null,
+    latestFactDate: data?.latest_fact_date ?? null,
+    latestSendEventAt: data?.latest_send_event_at ?? null,
+    latestReplyAt: data?.latest_reply_at ?? null,
+  }
+})

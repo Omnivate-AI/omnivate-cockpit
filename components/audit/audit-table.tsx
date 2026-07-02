@@ -166,7 +166,7 @@ export function AuditTable({ actions }: { actions: AuditLogRow[] }) {
                     <ActionStatusBadge status={action.status} />
                   </TableCell>
                   <TableCell className="text-sm font-mono text-muted-foreground">
-                    {action.triggered_by ?? "—"}
+                    {action.approved_by ?? "—"}
                   </TableCell>
                 </TableRow>
                 {isExpanded && (
@@ -174,8 +174,8 @@ export function AuditTable({ actions }: { actions: AuditLogRow[] }) {
                     <TableCell colSpan={7} className="py-3">
                       <DetailsPanel
                         details={action.details}
-                        errorMessage={action.error_message}
-                        completedAt={action.completed_at}
+                        errorMessage={action.error}
+                        completedAt={action.executed_at}
                       />
                     </TableCell>
                   </TableRow>

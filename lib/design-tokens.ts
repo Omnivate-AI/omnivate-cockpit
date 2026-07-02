@@ -35,27 +35,36 @@ export function healthColor(value: number): ColorTokens {
   }
 }
 
-export function alertSeverityColor(
-  severity: "critical" | "warning" | "info"
-): ColorTokens {
+// Covers both severity vocabularies: perf alerts (critical/warning/info)
+// and infra alerts (high/medium/low). Unknown values fall back to neutral.
+export function alertSeverityColor(severity: string): ColorTokens {
   switch (severity) {
     case "critical":
+    case "high":
       return {
         text: "text-rose-600",
         bg: "bg-rose-50",
         border: "border-rose-200",
       }
     case "warning":
+    case "medium":
       return {
         text: "text-amber-600",
         bg: "bg-amber-50",
         border: "border-amber-200",
       }
     case "info":
+    case "low":
       return {
         text: "text-blue-600",
         bg: "bg-blue-50",
         border: "border-blue-200",
+      }
+    default:
+      return {
+        text: "text-stone-600",
+        bg: "bg-stone-100",
+        border: "border-stone-200",
       }
   }
 }

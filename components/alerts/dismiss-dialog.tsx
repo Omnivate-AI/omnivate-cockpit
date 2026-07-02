@@ -11,7 +11,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { createClient } from "@/lib/supabase/client"
 
 interface DismissDialogProps {
   alertId: number
@@ -34,16 +33,14 @@ export function DismissDialog({
   async function handleDismiss() {
     setLoading(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("mailbox_alerts")
-        .update({
-          status: "dismissed",
-        })
-        .eq("id", alertId)
+      // Server route writes sp_infra_alerts with the service-role client
+      const res = await fetch(`/api/alerts/${alertId}/acknowledge`, {
+        method: "POST",
+      })
 
-      if (error) {
-        console.error("Failed to dismiss alert:", error.message)
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        console.error("Failed to dismiss alert:", body?.error ?? res.status)
         return
       }
 

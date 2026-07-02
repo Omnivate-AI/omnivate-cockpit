@@ -85,8 +85,8 @@ function ActionRow({ action }: { action: MailboxAction }) {
         <ActionStatusBadge status={action.status} />
 
         <span className="text-xs text-muted-foreground ml-auto whitespace-nowrap">
-          {action.triggered_by && (
-            <span className="mr-3 font-mono">{action.triggered_by}</span>
+          {action.approved_by && (
+            <span className="mr-3 font-mono">{action.approved_by}</span>
           )}
           <span title={format(new Date(action.created_at), "PPpp")}>
             {formatDistanceToNow(new Date(action.created_at), {
@@ -99,15 +99,15 @@ function ActionRow({ action }: { action: MailboxAction }) {
       {expanded && (
         <div className="px-4 pb-3 pl-11 space-y-2">
           {renderDetails(action.details)}
-          {action.error_message && (
+          {action.error && (
             <p className="text-sm text-rose-600 dark:text-rose-400">
-              Error: {action.error_message}
+              Error: {action.error}
             </p>
           )}
-          {action.completed_at && (
+          {action.executed_at && (
             <p className="text-xs text-muted-foreground">
-              Completed:{" "}
-              {format(new Date(action.completed_at), "MMM d, yyyy h:mm a")}
+              Executed:{" "}
+              {format(new Date(action.executed_at), "MMM d, yyyy h:mm a")}
             </p>
           )}
         </div>

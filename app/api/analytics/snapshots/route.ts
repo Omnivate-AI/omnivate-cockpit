@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
+import { getActiveClients } from "@/lib/queries/clients"
 import type {
   ClientConfig,
   ClientSnapshot,
@@ -10,9 +11,62 @@ import type {
 } from "@/types/analytics"
 
 /**
- * GET /api/analytics/snapshots — fetch latest snapshot + 14-day history per client + campaigns
- * GET /api/analytics/snapshots?campaign_id=xxx — fetch 14-day history for one campaign
+ * GET /api/analytics/snapshots — latest snapshot + 14-day history per client + campaigns
+ * GET /api/analytics/snapshots?campaign_id=xxx — 14-day history for one campaign
+ *
+ * All reads come from the sp_* read-models (vw_cockpit_*).
  */
+
+interface CampaignDailyRow {
+  campaign_id: number
+  campaign_name: string
+  client: string
+  snapshot_date: string
+  total_leads: number | null
+  emails_sent: number | null
+  bounced: number | null
+  positive_replies: number | null
+  reply_count: number | null
+  unsent_leads: number | null
+  mailbox_count: number | null
+  positive_reply_rate: number | null
+  leads_not_started: number | null
+  leads_in_progress: number | null
+  leads_completed: number | null
+  leads_blocked: number | null
+  all_time_emails_sent: number | null
+  all_time_interested: number | null
+}
+
+function toCampaignSnapshot(
+  row: CampaignDailyRow,
+  campaignType: "primary" | "subsequence",
+  sequenceLength: number
+): CampaignSnapshot {
+  return {
+    campaign_id: row.campaign_id,
+    campaign_name: row.campaign_name,
+    client: row.client,
+    campaign_type: campaignType,
+    total_leads: row.total_leads ?? 0,
+    emails_sent: row.emails_sent ?? 0,
+    bounced: row.bounced ?? 0,
+    positive_replies: row.positive_replies ?? 0,
+    reply_count: row.reply_count ?? 0,
+    unsent_leads: row.unsent_leads ?? 0,
+    mailbox_count: row.mailbox_count ?? 0,
+    positive_reply_rate: Number(row.positive_reply_rate ?? 0),
+    snapshot_date: row.snapshot_date,
+    leads_not_started: row.leads_not_started ?? 0,
+    leads_in_progress: row.leads_in_progress ?? 0,
+    leads_completed: row.leads_completed ?? 0,
+    leads_blocked: row.leads_blocked ?? 0,
+    leads_total_active: row.total_leads ?? 0,
+    sequence_length: sequenceLength,
+    all_time_emails_sent: row.all_time_emails_sent ?? 0,
+    all_time_interested: row.all_time_interested ?? 0,
+  }
+}
 
 export async function GET(request: NextRequest) {
   const campaignId = request.nextUrl.searchParams.get("campaign_id")
@@ -26,49 +80,30 @@ export async function GET(request: NextRequest) {
       return Response.json({ error: "Invalid campaign_id" }, { status: 400 })
     }
 
-    const { data, error } = await supabase
-      .from("campaign_analytics_snapshots")
-      .select("*")
-      .eq("campaign_id", numId)
-      .order("snapshot_date", { ascending: false })
-      .limit(14)
+    const [{ data, error }, { data: regRow }] = await Promise.all([
+      supabase
+        .from("vw_cockpit_campaign_daily")
+        .select("*")
+        .eq("campaign_id", numId)
+        .order("snapshot_date", { ascending: false })
+        .limit(14),
+      supabase
+        .from("vw_cockpit_campaigns")
+        .select("campaign_type, sequence_length")
+        .eq("smartlead_campaign_id", numId)
+        .maybeSingle(),
+    ])
 
     if (error) {
       return Response.json({ error: error.message }, { status: 500 })
     }
 
-    // Fetch campaign_type from campaign_registry for this campaign
-    const { data: regRow } = await supabase
-      .from("campaign_registry")
-      .select("campaign_type")
-      .eq("id", numId)
-      .maybeSingle()
-
     const cType = (regRow?.campaign_type as "primary" | "subsequence") ?? "primary"
+    const seqLen = regRow?.sequence_length ?? 3
 
-    const history: CampaignSnapshot[] = [...(data || [])].reverse().map((row) => ({
-      campaign_id: row.campaign_id,
-      campaign_name: row.campaign_name,
-      client: row.client,
-      campaign_type: cType,
-      total_leads: row.total_leads ?? 0,
-      emails_sent: row.emails_sent ?? 0,
-      bounced: row.bounced ?? 0,
-      positive_replies: row.positive_replies ?? 0,
-      reply_count: row.reply_count ?? 0,
-      unsent_leads: row.unsent_leads ?? 0,
-      mailbox_count: row.mailbox_count ?? 0,
-      positive_reply_rate: Number(row.positive_reply_rate ?? 0),
-      snapshot_date: row.snapshot_date,
-      leads_not_started: row.leads_not_started ?? 0,
-      leads_in_progress: row.leads_in_progress ?? 0,
-      leads_completed: row.leads_completed ?? 0,
-      leads_blocked: row.leads_blocked ?? 0,
-      leads_total_active: row.leads_total_active ?? 0,
-      sequence_length: row.sequence_length ?? 3,
-      all_time_emails_sent: row.all_time_emails_sent ?? 0,
-      all_time_interested: row.all_time_interested ?? 0,
-    }))
+    const history: CampaignSnapshot[] = [...(data || [])]
+      .reverse()
+      .map((row) => toCampaignSnapshot(row as CampaignDailyRow, cType, seqLen))
 
     const result: CampaignHistoryResponse = {
       campaign_id: numId,
@@ -77,141 +112,205 @@ export async function GET(request: NextRequest) {
     return Response.json(result)
   }
 
-  // Full dashboard mode — all clients + campaigns
+  // Full dashboard mode — all active clients + campaigns
 
-  // 1. Load client configs
-  const { data: configs, error: configError } = await supabase
-    .from("client_analytics_config")
-    .select("*")
-    .eq("is_active", true)
-    .order("display_name")
+  const activeSlugs = await getActiveClients()
 
-  if (configError) {
-    return Response.json({ error: configError.message }, { status: 500 })
+  const since = new Date()
+  since.setDate(since.getDate() - 14)
+  const sinceStr = since.toISOString().split("T")[0]
+
+  const [
+    { data: configRows },
+    { data: perfRows, error: perfError },
+    { data: lifetimeRows },
+    { data: capacityRows },
+    { data: factsRows },
+    { data: campaignRows },
+    { data: campaignMeta },
+  ] = await Promise.all([
+    supabase
+      .from("client_analytics_config")
+      .select("*")
+      .in("client", activeSlugs),
+    supabase
+      .from("vw_cockpit_daily_client_perf")
+      .select("*")
+      .in("client", activeSlugs)
+      .gte("snapshot_date", sinceStr)
+      .order("snapshot_date", { ascending: false }),
+    supabase
+      .from("vw_cockpit_client_lifetime")
+      .select("*")
+      .in("client", activeSlugs),
+    supabase
+      .from("vw_cockpit_client_capacity")
+      .select("*")
+      .in("client", activeSlugs),
+    supabase
+      .from("vw_cockpit_client_daily_facts")
+      .select("*")
+      .in("client", activeSlugs)
+      .order("snapshot_date", { ascending: false })
+      .limit(activeSlugs.length * 4),
+    supabase
+      .from("vw_cockpit_campaign_daily")
+      .select("*")
+      .in("client", activeSlugs)
+      .gte("snapshot_date", sinceStr)
+      .order("snapshot_date", { ascending: false }),
+    supabase
+      .from("vw_cockpit_campaigns")
+      .select("smartlead_campaign_id, campaign_type, sequence_length, is_active")
+      .in("client", activeSlugs),
+  ])
+
+  if (perfError) {
+    return Response.json({ error: perfError.message }, { status: 500 })
   }
 
-  const activeConfigs = (configs || []) as ClientConfig[]
+  const configBySlug = new Map<string, ClientConfig>()
+  for (const c of (configRows ?? []) as ClientConfig[]) configBySlug.set(c.client, c)
 
-  // 2. Fetch ALL snapshots for the last 14 days in a single query (covers both latest + history)
-  const clientSlugs = activeConfigs.map((c) => c.client)
-  const { data: allSnapshotRows, error: snapError } = await supabase
-    .from("analytics_snapshots")
-    .select("*")
-    .in("client", clientSlugs)
-    .order("snapshot_date", { ascending: false })
-    .limit(clientSlugs.length * 14)
+  const defaultConfig = (slug: string): ClientConfig => ({
+    id: 0,
+    client: slug,
+    display_name: slug
+      .split(/[-_]/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" "),
+    parent_client: null,
+    daily_email_target: 0,
+    daily_targets: null,
+    lead_table: null,
+    lead_filter: null,
+    smartlead_client_ids: [],
+    runway_warning_days: 7,
+    runway_critical_days: 3,
+    is_active: true,
+    created_at: "",
+    updated_at: "",
+  })
 
-  if (snapError) {
-    return Response.json({ error: snapError.message }, { status: 500 })
-  }
-
-  // Group snapshots by client
-  const snapshotsByClient = new Map<string, typeof allSnapshotRows>()
-  for (const row of allSnapshotRows || []) {
-    const existing = snapshotsByClient.get(row.client) || []
+  const perfByClient = new Map<string, typeof perfRows>()
+  for (const row of perfRows || []) {
+    const existing = perfByClient.get(row.client) || []
     existing.push(row)
-    snapshotsByClient.set(row.client, existing)
+    perfByClient.set(row.client, existing)
   }
 
-  // 3. Build per-client response from grouped data
-  const clients: SnapshotsResponse["clients"] = activeConfigs.map((cfg) => {
-    const rows = snapshotsByClient.get(cfg.client) || []
-    // rows are already ordered by snapshot_date DESC — first row is the latest
+  const lifetimeByClient = new Map<
+    string,
+    { all_time_emails_sent: number; all_time_interested: number }
+  >()
+  for (const r of lifetimeRows ?? []) lifetimeByClient.set(r.client, r)
+  const capacityByClient = new Map<
+    string,
+    { active_daily_capacity: number; total_send_capacity: number }
+  >()
+  for (const r of capacityRows ?? []) capacityByClient.set(r.client, r)
+  const factsByClient = new Map<
+    string,
+    { active_daily_capacity: number | null; runway_days: number | null; active_mailboxes: number | null }
+  >()
+  for (const r of factsRows ?? []) {
+    if (!factsByClient.has(r.client)) factsByClient.set(r.client, r)
+  }
+
+  const clients: SnapshotsResponse["clients"] = activeSlugs.map((slug) => {
+    const cfg = configBySlug.get(slug) ?? defaultConfig(slug)
+    const rows = perfByClient.get(slug) || []
     const latestRow = rows[0] || null
+    const lifetime = lifetimeByClient.get(slug)
+    const capacity = capacityByClient.get(slug)
+    const facts = factsByClient.get(slug)
 
     const latest: ClientSnapshot | null = latestRow
       ? {
-          client: latestRow.client,
+          client: slug,
           display_name: cfg.display_name,
           parent_client: cfg.parent_client,
-          ready_leads: latestRow.ready_leads ?? 0,
-          qualified_no_email: latestRow.qualified_no_email ?? 0,
+          ready_leads: 0,
+          qualified_no_email: 0,
           total_leads_in_campaigns: latestRow.total_leads_in_campaigns ?? 0,
-          unsent_campaign_leads: latestRow.unsent_campaign_leads ?? 0,
-          subsequence_unsent: latestRow.subsequence_unsent ?? 0,
+          unsent_campaign_leads: latestRow.leads_not_started ?? 0,
+          subsequence_unsent: 0,
           emails_sent_count: latestRow.emails_sent_count ?? 0,
           positive_replies_count: latestRow.positive_replies_count ?? 0,
-          mailbox_count: latestRow.mailbox_count ?? 0,
-          estimated_max_capacity: latestRow.estimated_max_capacity ?? 0,
-          daily_email_target: latestRow.daily_email_target ?? cfg.daily_email_target,
-          hitting_target: latestRow.hitting_target ?? false,
-          total_runway_days: Number(latestRow.total_runway_days ?? 0),
-          campaign_runway_days: Number(latestRow.campaign_runway_days ?? 0),
-          pipeline_runway_days: Number(latestRow.pipeline_runway_days ?? 0),
-          daily_capacity: latestRow.daily_capacity ?? 0,
+          mailbox_count: facts?.active_mailboxes ?? 0,
+          estimated_max_capacity: capacity?.total_send_capacity ?? 0,
+          daily_email_target: cfg.daily_email_target,
+          hitting_target:
+            cfg.daily_email_target > 0
+              ? (latestRow.emails_sent_count ?? 0) >= cfg.daily_email_target
+              : true,
+          total_runway_days: Number(
+            facts?.runway_days ?? latestRow.campaign_runway_days ?? 999
+          ),
+          campaign_runway_days: Number(latestRow.campaign_runway_days ?? 999),
+          pipeline_runway_days: 999,
+          daily_capacity:
+            facts?.active_daily_capacity ?? capacity?.active_daily_capacity ?? 0,
           runway_warning_days: cfg.runway_warning_days,
           runway_critical_days: cfg.runway_critical_days,
-          alert_types_sent: latestRow.alert_types_sent ?? [],
+          alert_types_sent: [],
           snapshot_date: latestRow.snapshot_date,
           leads_not_started: latestRow.leads_not_started ?? 0,
           leads_in_progress: latestRow.leads_in_progress ?? 0,
-          leads_completed: latestRow.leads_completed ?? 0,
-          leads_blocked: latestRow.leads_blocked ?? 0,
-          all_time_emails_sent: latestRow.all_time_emails_sent ?? 0,
-          all_time_interested: latestRow.all_time_interested ?? 0,
+          leads_completed: Math.max(
+            0,
+            (latestRow.total_leads_in_campaigns ?? 0) -
+              (latestRow.leads_not_started ?? 0) -
+              (latestRow.leads_in_progress ?? 0)
+          ),
+          leads_blocked: 0,
+          all_time_emails_sent: lifetime?.all_time_emails_sent ?? 0,
+          all_time_interested: lifetime?.all_time_interested ?? 0,
         }
       : null
 
-    // Take up to 14 most recent rows, reverse to chronological order
     const historySlice = rows.slice(0, 14)
     const history: DailyPoint[] = [...historySlice].reverse().map((row) => ({
       date: row.snapshot_date,
       emails_sent_count: row.emails_sent_count ?? 0,
       positive_replies_count: row.positive_replies_count ?? 0,
-      reply_count: 0, // Not stored in analytics_snapshots; available via campaign snapshots
-      bounced: 0,
-      hitting_target: row.hitting_target ?? false,
-      total_runway_days: Number(row.total_runway_days ?? 0),
+      reply_count: row.reply_count ?? 0,
+      bounced: row.bounced ?? 0,
+      hitting_target:
+        cfg.daily_email_target > 0
+          ? (row.emails_sent_count ?? 0) >= cfg.daily_email_target
+          : true,
+      total_runway_days: Number(row.campaign_runway_days ?? 0),
     }))
 
     return { config: cfg, latest, history }
   })
 
-  // 4. Latest campaign snapshots (most recent date, all active campaigns)
-  const { data: campaignRows } = await supabase
-    .from("campaign_analytics_snapshots")
-    .select("*")
-    .order("snapshot_date", { ascending: false })
-
-  // Fetch campaign_type from campaign_registry
-  const { data: registryRows } = await supabase
-    .from("campaign_registry")
-    .select("id, campaign_type")
-
-  const campaignTypeMap = new Map<number, "primary" | "subsequence">()
-  for (const r of registryRows || []) {
-    campaignTypeMap.set(r.id, r.campaign_type as "primary" | "subsequence")
+  // Latest campaign snapshots (most recent fact per campaign)
+  const typeBySmartleadId = new Map<
+    number,
+    { campaign_type: "primary" | "subsequence"; sequence_length: number }
+  >()
+  for (const r of campaignMeta ?? []) {
+    typeBySmartleadId.set(r.smartlead_campaign_id, {
+      campaign_type: (r.campaign_type as "primary" | "subsequence") ?? "primary",
+      sequence_length: r.sequence_length ?? 3,
+    })
   }
 
-  // Deduplicate: keep only the latest snapshot per campaign_id
   const seenCampaigns = new Set<number>()
   const campaigns: CampaignSnapshot[] = []
-  for (const row of campaignRows || []) {
+  for (const row of (campaignRows ?? []) as CampaignDailyRow[]) {
     if (seenCampaigns.has(row.campaign_id)) continue
     seenCampaigns.add(row.campaign_id)
-    campaigns.push({
-      campaign_id: row.campaign_id,
-      campaign_name: row.campaign_name,
-      client: row.client,
-      campaign_type: campaignTypeMap.get(row.campaign_id) ?? "primary",
-      total_leads: row.total_leads ?? 0,
-      emails_sent: row.emails_sent ?? 0,
-      bounced: row.bounced ?? 0,
-      positive_replies: row.positive_replies ?? 0,
-      reply_count: row.reply_count ?? 0,
-      unsent_leads: row.unsent_leads ?? 0,
-      mailbox_count: row.mailbox_count ?? 0,
-      positive_reply_rate: Number(row.positive_reply_rate ?? 0),
-      snapshot_date: row.snapshot_date,
-      leads_not_started: row.leads_not_started ?? 0,
-      leads_in_progress: row.leads_in_progress ?? 0,
-      leads_completed: row.leads_completed ?? 0,
-      leads_blocked: row.leads_blocked ?? 0,
-      leads_total_active: row.leads_total_active ?? 0,
-      sequence_length: row.sequence_length ?? 3,
-      all_time_emails_sent: row.all_time_emails_sent ?? 0,
-      all_time_interested: row.all_time_interested ?? 0,
-    })
+    const meta = typeBySmartleadId.get(row.campaign_id)
+    campaigns.push(
+      toCampaignSnapshot(
+        row,
+        meta?.campaign_type ?? "primary",
+        meta?.sequence_length ?? 3
+      )
+    )
   }
 
   const result: SnapshotsResponse = { clients, campaigns }

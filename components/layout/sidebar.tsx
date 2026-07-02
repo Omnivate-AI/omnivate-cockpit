@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import { FLAGS } from "@/lib/flags"
 
 const CLIENT_COLORS: Record<string, string> = {
   roosterpunk: "bg-rose-500",
@@ -149,21 +150,23 @@ export function Sidebar({ alertCount = 0, clients, onNavigate }: SidebarProps) {
               <span className="capitalize">{client}</span>
             </button>
           ))}
-          <button
-            onClick={() => {
-              router.push("/onboarding")
-              onNavigate?.()
-            }}
-            className={cn(
-              "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
-              pathname.startsWith("/onboarding")
-                ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 font-medium"
-                : "text-muted-foreground hover:bg-stone-50 dark:hover:bg-accent/50 hover:text-foreground"
-            )}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>New Client</span>
-          </button>
+          {FLAGS.onboarding && (
+            <button
+              onClick={() => {
+                router.push("/onboarding")
+                onNavigate?.()
+              }}
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
+                pathname.startsWith("/onboarding")
+                  ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 font-medium"
+                  : "text-muted-foreground hover:bg-stone-50 dark:hover:bg-accent/50 hover:text-foreground"
+              )}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>New Client</span>
+            </button>
+          )}
           <Link
             href="/compare"
             onClick={onNavigate}

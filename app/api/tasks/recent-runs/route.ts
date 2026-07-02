@@ -1,14 +1,5 @@
 import { NextRequest } from "next/server"
-import { isTriggerConfigured } from "@/lib/trigger-client"
-
-const TRIGGER_API_BASE = "https://api.trigger.dev"
-
-const SYNC_TASKS = [
-  "monitor-mailbox-health",
-  "refresh-client-analytics",
-  "sync-campaign-registry",
-  "sync-mailbox-inventory",
-] as const
+import { createServerClient } from "@/lib/supabase/server"
 
 export interface RecentRun {
   taskId: string
@@ -17,57 +8,32 @@ export interface RecentRun {
   startedAt: string | null
 }
 
+/**
+ * GET /api/tasks/recent-runs
+ *
+ * Post-migration this reports the smartlead-perf plugin's daily sync runs
+ * from sp_sync_runs — the actual freshness signal for the sp_* data the app
+ * reads. (It used to poll Trigger.dev for legacy sync tasks.)
+ */
 export async function GET(_request: NextRequest) {
-  if (!isTriggerConfigured()) {
-    return Response.json(
-      { error: "TRIGGER_SECRET_KEY not configured" },
-      { status: 500 }
-    )
+  const supabase = createServerClient()
+
+  const { data, error } = await supabase
+    .from("sp_sync_runs")
+    .select("id, started_at, finished_at, status")
+    .order("started_at", { ascending: false })
+    .limit(4)
+
+  if (error) {
+    return Response.json({ error: error.message }, { status: 500 })
   }
 
-  const key = process.env.TRIGGER_SECRET_KEY!
+  const runs: RecentRun[] = (data ?? []).map((r) => ({
+    taskId: `smartlead-perf-sync #${r.id}`,
+    status: (r.status ?? "unknown").toLowerCase(),
+    finishedAt: r.finished_at ?? null,
+    startedAt: r.started_at ?? null,
+  }))
 
-  try {
-    const results = await Promise.all(
-      SYNC_TASKS.map(async (taskId): Promise<RecentRun> => {
-        try {
-          const res = await fetch(
-            `${TRIGGER_API_BASE}/api/v3/runs?taskIdentifier=${encodeURIComponent(taskId)}&limit=1`,
-            {
-              headers: { Authorization: `Bearer ${key}` },
-              next: { revalidate: 0 },
-            }
-          )
-
-          if (!res.ok) {
-            return { taskId, status: "unknown", finishedAt: null, startedAt: null }
-          }
-
-          const data = await res.json()
-          const runs = data.data ?? data.runs ?? []
-
-          if (runs.length === 0) {
-            return { taskId, status: "unknown", finishedAt: null, startedAt: null }
-          }
-
-          const run = runs[0]
-          return {
-            taskId,
-            status: run.status?.toLowerCase() ?? "unknown",
-            finishedAt: run.finishedAt ?? null,
-            startedAt: run.startedAt ?? run.createdAt ?? null,
-          }
-        } catch {
-          return { taskId, status: "unknown", finishedAt: null, startedAt: null }
-        }
-      })
-    )
-
-    return Response.json({ runs: results })
-  } catch {
-    return Response.json(
-      { error: "Failed to fetch recent runs" },
-      { status: 502 }
-    )
-  }
+  return Response.json({ runs })
 }

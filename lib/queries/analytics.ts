@@ -1,10 +1,101 @@
 import { cache } from "react"
 import { createServerClient } from "@/lib/supabase/server"
-import { resolveClientSlugs } from "@/lib/queries/clients"
+import { getActiveClients, resolveClientSlugs } from "@/lib/queries/clients"
 import type { ClientConfig, ClientSnapshot, DailyTargets } from "@/types/analytics"
 import { getTargetForDate } from "@/types/analytics"
 
+// Performance reads come from the sp_* read-models:
+//   vw_cockpit_daily_client_perf  — per-client daily sends/replies/positive (from sp_daily_campaign_facts)
+//   vw_cockpit_client_lifetime    — per-client all-time totals (from sp_campaign_lifetime)
+//   vw_cockpit_client_capacity    — mailbox-derived send capacity
+//   vw_cockpit_client_health_summary — lifecycle counts + avg warmup health
+//   vw_cockpit_client_daily_facts — plugin-computed runway/capacity per day
+//   vw_cockpit_freshness          — global "data as-of"
+//
+// client_analytics_config stays as the APP-OWNED targets/hierarchy table
+// (daily targets, runway thresholds, parent/child) — it is config, not data.
+
+// --- Row shapes from the views ---
+
+interface PerfRow {
+  client: string
+  display_name: string | null
+  snapshot_date: string
+  emails_sent_count: number
+  reply_count: number
+  positive_replies_count: number
+  bounced: number
+  total_leads_in_campaigns: number
+  leads_not_started: number
+  leads_in_progress: number
+  campaign_runway_days: number | null
+  campaigns_reporting: number
+}
+
+interface LifetimeRow {
+  client: string
+  all_time_emails_sent: number
+  all_time_replies: number
+  all_time_interested: number
+  campaign_count: number
+}
+
+interface CapacityRow {
+  client: string
+  active_daily_capacity: number
+  total_send_capacity: number
+  out_of_service_count: number
+}
+
+interface HealthSummaryRow {
+  client: string
+  active: number
+  warming: number
+  reserve: number
+  resting: number
+  parked: number
+  burnt: number
+  retired: number
+  masters: number
+  total: number
+  avg_sending_health: number | null
+}
+
+interface ClientDailyFactsRow {
+  client: string
+  snapshot_date: string
+  active_campaigns: number | null
+  remaining_emails: number | null
+  active_mailboxes: number | null
+  active_daily_capacity: number | null
+  runway_days: number | null
+}
+
 // --- Helpers ---
+
+function defaultConfig(slug: string, displayName?: string | null): ClientConfig {
+  return {
+    id: 0,
+    client: slug,
+    display_name:
+      displayName ??
+      slug
+        .split(/[-_]/)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" "),
+    parent_client: null,
+    daily_email_target: 0,
+    daily_targets: null,
+    lead_table: null,
+    lead_filter: null,
+    smartlead_client_ids: [],
+    runway_warning_days: 7,
+    runway_critical_days: 3,
+    is_active: true,
+    created_at: "",
+    updated_at: "",
+  }
+}
 
 /**
  * Aggregate multiple ClientSnapshots into one by SUMming numeric fields
@@ -20,7 +111,6 @@ export function aggregateSnapshots(
 
   for (let i = 1; i < snapshots.length; i++) {
     const s = snapshots[i]
-    // SUM fields
     base.emails_sent_count += s.emails_sent_count ?? 0
     base.positive_replies_count += s.positive_replies_count ?? 0
     base.ready_leads += s.ready_leads ?? 0
@@ -38,7 +128,6 @@ export function aggregateSnapshots(
     base.leads_in_progress += s.leads_in_progress ?? 0
     base.leads_completed += s.leads_completed ?? 0
     base.leads_blocked += s.leads_blocked ?? 0
-    // MIN for runway
     base.total_runway_days = Math.min(
       base.total_runway_days ?? Infinity,
       s.total_runway_days ?? Infinity
@@ -53,10 +142,112 @@ export function aggregateSnapshots(
     )
   }
 
-  // Recompute hitting_target
   base.hitting_target = base.emails_sent_count >= base.daily_email_target
 
   return base
+}
+
+/** Build a ClientSnapshot from the sp_* read-model rows. */
+function buildSnapshot(params: {
+  slug: string
+  config: ClientConfig | null
+  latestPerf: PerfRow | null
+  periodSends?: number | null
+  lifetime: LifetimeRow | null
+  capacity: CapacityRow | null
+  health: HealthSummaryRow | null
+  dailyFacts: ClientDailyFactsRow | null
+}): ClientSnapshot | null {
+  const { slug, config, latestPerf, periodSends, lifetime, capacity, health, dailyFacts } = params
+  if (!latestPerf && !lifetime && !health) return null
+
+  const totalLeads = latestPerf?.total_leads_in_campaigns ?? 0
+  const notStarted = latestPerf?.leads_not_started ?? 0
+  const inProgress = latestPerf?.leads_in_progress ?? 0
+  const completed = Math.max(0, totalLeads - notStarted - inProgress)
+  const dailyCapacity =
+    dailyFacts?.active_daily_capacity ?? capacity?.active_daily_capacity ?? 0
+  const runway =
+    dailyFacts?.runway_days ?? latestPerf?.campaign_runway_days ?? null
+  const emailsSent = periodSends ?? latestPerf?.emails_sent_count ?? 0
+  const target = config?.daily_email_target ?? 0
+  const nonRetiredMailboxes = health
+    ? Math.max(0, (health.total ?? 0) - (health.retired ?? 0))
+    : dailyFacts?.active_mailboxes ?? 0
+
+  return {
+    client: slug,
+    display_name:
+      config?.display_name ?? latestPerf?.display_name ?? slug,
+    parent_client: config?.parent_client ?? null,
+    // Lead-bank metrics lived in the legacy lead-table refresh; not tracked in sp_*.
+    ready_leads: 0,
+    qualified_no_email: 0,
+    total_leads_in_campaigns: totalLeads,
+    unsent_campaign_leads: notStarted,
+    subsequence_unsent: 0,
+    emails_sent_count: emailsSent,
+    positive_replies_count: latestPerf?.positive_replies_count ?? 0,
+    mailbox_count: nonRetiredMailboxes,
+    estimated_max_capacity: capacity?.total_send_capacity ?? 0,
+    daily_email_target: target,
+    hitting_target: target > 0 ? emailsSent >= target : true,
+    total_runway_days: runway ?? 999,
+    campaign_runway_days: latestPerf?.campaign_runway_days ?? runway ?? 999,
+    pipeline_runway_days: 999,
+    daily_capacity: dailyCapacity,
+    runway_warning_days: config?.runway_warning_days ?? 7,
+    runway_critical_days: config?.runway_critical_days ?? 3,
+    alert_types_sent: [],
+    snapshot_date: latestPerf?.snapshot_date ?? dailyFacts?.snapshot_date ?? "",
+    leads_not_started: notStarted,
+    leads_in_progress: inProgress,
+    leads_completed: completed,
+    leads_blocked: 0,
+    all_time_emails_sent: lifetime?.all_time_emails_sent ?? 0,
+    all_time_interested: lifetime?.all_time_interested ?? 0,
+  }
+}
+
+/** Fetch the standard bundle of per-client read-model rows. */
+async function fetchClientBundles(slugs: string[]) {
+  const supabase = createServerClient()
+
+  const [lifetimeRes, capacityRes, healthRes, factsRes] = await Promise.all([
+    supabase.from("vw_cockpit_client_lifetime").select("*").in("client", slugs),
+    supabase.from("vw_cockpit_client_capacity").select("*").in("client", slugs),
+    supabase
+      .from("vw_cockpit_client_health_summary")
+      .select("*")
+      .in("client", slugs),
+    supabase
+      .from("vw_cockpit_client_daily_facts")
+      .select(
+        "client, snapshot_date, active_campaigns, remaining_emails, active_mailboxes, active_daily_capacity, runway_days"
+      )
+      .in("client", slugs)
+      .order("snapshot_date", { ascending: false })
+      .limit(slugs.length * 8),
+  ])
+
+  const lifetimeByClient = new Map<string, LifetimeRow>()
+  for (const r of (lifetimeRes.data ?? []) as LifetimeRow[]) {
+    lifetimeByClient.set(r.client, r)
+  }
+  const capacityByClient = new Map<string, CapacityRow>()
+  for (const r of (capacityRes.data ?? []) as CapacityRow[]) {
+    capacityByClient.set(r.client, r)
+  }
+  const healthByClient = new Map<string, HealthSummaryRow>()
+  for (const r of (healthRes.data ?? []) as HealthSummaryRow[]) {
+    healthByClient.set(r.client, r)
+  }
+  const factsByClient = new Map<string, ClientDailyFactsRow>()
+  for (const r of (factsRes.data ?? []) as ClientDailyFactsRow[]) {
+    if (!factsByClient.has(r.client)) factsByClient.set(r.client, r)
+  }
+
+  return { lifetimeByClient, capacityByClient, healthByClient, factsByClient }
 }
 
 // --- Interfaces ---
@@ -87,120 +278,71 @@ export interface DailySendDataPoint {
 
 export const getGlobalKPIs = cache(async (days: number = 1): Promise<GlobalKPIs> => {
   const supabase = createServerClient()
+  const activeSlugs = await getActiveClients()
 
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - days)
   const cutoffStr = cutoff.toISOString().split("T")[0]
 
-  // Fetch snapshots within the period
-  const { data: allSnapshots } = await supabase
-    .from("analytics_snapshots")
-    .select(
-      "client, emails_sent_count, positive_replies_count, all_time_emails_sent, all_time_interested, estimated_max_capacity, snapshot_date"
-    )
-    .gte("snapshot_date", cutoffStr)
-    .order("snapshot_date", { ascending: false })
+  const [perfRes, lifetimeRes, capacityRes, alertsRes] = await Promise.all([
+    supabase
+      .from("vw_cockpit_daily_client_perf")
+      .select("client, snapshot_date, emails_sent_count, reply_count, positive_replies_count")
+      .in("client", activeSlugs)
+      .gte("snapshot_date", cutoffStr)
+      .order("snapshot_date", { ascending: false }),
+    supabase
+      .from("vw_cockpit_client_lifetime")
+      .select("client, all_time_emails_sent, all_time_interested")
+      .in("client", activeSlugs),
+    supabase
+      .from("vw_cockpit_client_capacity")
+      .select("client, active_daily_capacity")
+      .in("client", activeSlugs),
+    supabase
+      .from("vw_cockpit_alerts")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "open"),
+  ])
 
-  // For period sums: aggregate emails_sent_count and positive_replies_count across all dates
-  // For all-time metrics (reply rate, capacity): use latest snapshot per client
   let emailsSentPeriod = 0
   let positiveRepliesPeriod = 0
+  let totalReplies = 0
+  let latestSnapshotDate: string | null = null
+  for (const r of (perfRes.data ?? []) as PerfRow[]) {
+    emailsSentPeriod += r.emails_sent_count ?? 0
+    positiveRepliesPeriod += r.positive_replies_count ?? 0
+    totalReplies += r.reply_count ?? 0
+    if (!latestSnapshotDate || r.snapshot_date > latestSnapshotDate) {
+      latestSnapshotDate = r.snapshot_date
+    }
+  }
+
   let allTimeEmailsSent = 0
   let allTimeInterested = 0
-  let totalCapacity = 0
-
-  const latestByClient = new Map<string, (typeof allSnapshots extends (infer T)[] | null ? T : never)>()
-  if (allSnapshots) {
-    for (const s of allSnapshots) {
-      // Sum daily values across entire period
-      emailsSentPeriod += s.emails_sent_count ?? 0
-      positiveRepliesPeriod += s.positive_replies_count ?? 0
-
-      // Keep latest per client for all-time metrics
-      if (!latestByClient.has(s.client)) {
-        latestByClient.set(s.client, s)
-      }
-    }
+  for (const r of (lifetimeRes.data ?? []) as LifetimeRow[]) {
+    allTimeEmailsSent += r.all_time_emails_sent ?? 0
+    allTimeInterested += r.all_time_interested ?? 0
   }
 
-  const latestSnapshots = Array.from(latestByClient.values())
-  for (const s of latestSnapshots) {
-    allTimeEmailsSent += s.all_time_emails_sent ?? 0
-    allTimeInterested += s.all_time_interested ?? 0
-    totalCapacity += s.estimated_max_capacity ?? 0
-  }
+  const totalCapacity = ((capacityRes.data ?? []) as CapacityRow[]).reduce(
+    (sum, r) => sum + (r.active_daily_capacity ?? 0),
+    0
+  )
 
   const overallReplyRate =
-    allTimeEmailsSent > 0
-      ? (allTimeInterested / allTimeEmailsSent) * 100
-      : 0
+    allTimeEmailsSent > 0 ? (allTimeInterested / allTimeEmailsSent) * 100 : 0
 
-  // Capacity utilization: use average daily sends in period
   const avgDailySent = days > 0 ? emailsSentPeriod / days : emailsSentPeriod
   const capacityUtilization =
-    totalCapacity > 0
-      ? (avgDailySent / totalCapacity) * 100
-      : 0
-
-  // Sum total replies from campaign_analytics_snapshots within the period
-  // Use day-over-day deltas to get period total replies
-  const { data: campaignSnapshots } = await supabase
-    .from("campaign_analytics_snapshots")
-    .select("campaign_id, reply_count, snapshot_date")
-    .gte("snapshot_date", cutoffStr)
-    .order("snapshot_date", { ascending: true })
-
-  let totalReplies = 0
-  if (campaignSnapshots && campaignSnapshots.length > 0) {
-    // Group by campaign_id, compute deltas
-    const byCampaign = new Map<number, { date: string; replyCount: number }[]>()
-    for (const cs of campaignSnapshots) {
-      const arr = byCampaign.get(cs.campaign_id) ?? []
-      arr.push({ date: cs.snapshot_date, replyCount: cs.reply_count ?? 0 })
-      byCampaign.set(cs.campaign_id, arr)
-    }
-    for (const [, entries] of byCampaign) {
-      if (entries.length >= 2) {
-        // Delta between latest and earliest in period
-        const delta = entries[entries.length - 1].replyCount - entries[0].replyCount
-        if (delta > 0) totalReplies += delta
-      }
-    }
-    // Fallback: if only 1 snapshot per campaign, use latest reply_count from all-time
-    if (totalReplies === 0) {
-      const { data: latestCampaignSnaps } = await supabase
-        .from("campaign_analytics_snapshots")
-        .select("campaign_id, reply_count, snapshot_date")
-        .order("snapshot_date", { ascending: false })
-      const seenCampaigns = new Set<number>()
-      if (latestCampaignSnaps) {
-        for (const cs of latestCampaignSnaps) {
-          if (!seenCampaigns.has(cs.campaign_id)) {
-            seenCampaigns.add(cs.campaign_id)
-            totalReplies += cs.reply_count ?? 0
-          }
-        }
-      }
-    }
-  }
-
-  // Count active alerts
-  const { count: activeAlerts } = await supabase
-    .from("mailbox_alerts")
-    .select("*", { count: "exact", head: true })
-    .eq("status", "pending")
-
-  // Latest snapshot date across all clients
-  const latestSnapshotDate = latestSnapshots.length > 0
-    ? latestSnapshots[0].snapshot_date ?? null
-    : null
+    totalCapacity > 0 ? (avgDailySent / totalCapacity) * 100 : 0
 
   return {
     emailsSentYesterday: emailsSentPeriod,
     positiveReplies: positiveRepliesPeriod,
     totalReplies,
     overallReplyRate,
-    activeAlerts: activeAlerts ?? 0,
+    activeAlerts: alertsRes.count ?? 0,
     capacityUtilization,
     latestSnapshotDate,
   }
@@ -214,68 +356,76 @@ export const getClientSummaries = cache(
     cutoff.setDate(cutoff.getDate() - days)
     const cutoffStr = cutoff.toISOString().split("T")[0]
 
-    // 1. Get active client configs
-    const { data: configs } = await supabase
+    // 1. Active clients from sp_clients; targets/hierarchy from app config
+    const activeSlugs = await getActiveClients()
+    if (activeSlugs.length === 0) return []
+
+    const { data: configRows } = await supabase
       .from("client_analytics_config")
       .select("*")
-      .eq("is_active", true)
-      .order("client", { ascending: true })
+      .in("client", activeSlugs)
 
-    if (!configs || configs.length === 0) return []
+    const configBySlug = new Map<string, ClientConfig>()
+    for (const c of (configRows ?? []) as ClientConfig[]) {
+      configBySlug.set(c.client, c)
+    }
+    const configs: ClientConfig[] = activeSlugs.map(
+      (slug) => configBySlug.get(slug) ?? defaultConfig(slug)
+    )
 
-    const clientSlugs = configs.map((c) => c.client)
-
-    // 2. Get analytics snapshots within the period
-    const { data: allSnapshots } = await supabase
-      .from("analytics_snapshots")
+    // 2. Perf rows in period + latest per client
+    const { data: perfRows } = await supabase
+      .from("vw_cockpit_daily_client_perf")
       .select("*")
-      .in("client", clientSlugs)
+      .in("client", activeSlugs)
       .gte("snapshot_date", cutoffStr)
       .order("snapshot_date", { ascending: false })
 
-    // Latest per client (for all-time fields) + sum period sends
-    const latestByClient = new Map<string, ClientSnapshot>()
+    const latestByClient = new Map<string, PerfRow>()
     const periodSendsByClient = new Map<string, number>()
-    if (allSnapshots) {
-      for (const s of allSnapshots) {
-        if (!latestByClient.has(s.client)) {
-          latestByClient.set(s.client, s as ClientSnapshot)
-        }
-        periodSendsByClient.set(
-          s.client,
-          (periodSendsByClient.get(s.client) ?? 0) + (s.emails_sent_count ?? 0)
-        )
-      }
+    for (const r of (perfRows ?? []) as PerfRow[]) {
+      if (!latestByClient.has(r.client)) latestByClient.set(r.client, r)
+      periodSendsByClient.set(
+        r.client,
+        (periodSendsByClient.get(r.client) ?? 0) + (r.emails_sent_count ?? 0)
+      )
     }
 
-    // Override emails_sent_count on latest snapshot with period sum
-    if (days > 1) {
-      for (const [client, snap] of latestByClient) {
-        snap.emails_sent_count = periodSendsByClient.get(client) ?? snap.emails_sent_count
-      }
-    }
+    // 3. Lifetime, capacity, health, plugin daily facts
+    const { lifetimeByClient, capacityByClient, healthByClient, factsByClient } =
+      await fetchClientBundles(activeSlugs)
 
-    // 3. Count pending alerts per client
+    // 4. Open alert counts per client
     const { data: alertRows } = await supabase
-      .from("mailbox_alerts")
-      .select("client:mailbox_domains(client)")
-      .eq("status", "pending")
+      .from("vw_cockpit_alerts")
+      .select("client")
+      .eq("status", "open")
+      .in("client", activeSlugs)
 
     const alertCounts = new Map<string, number>()
-    if (alertRows) {
-      for (const row of alertRows) {
-        const client = (row.client as unknown as { client: string })?.client
-        if (client) {
-          alertCounts.set(client, (alertCounts.get(client) ?? 0) + 1)
-        }
+    for (const row of alertRows ?? []) {
+      if (row.client) {
+        alertCounts.set(row.client, (alertCounts.get(row.client) ?? 0) + 1)
       }
     }
 
-    // 4. Group by parent_client — children with the same parent become ONE summary
+    const snapshotFor = (slug: string, config: ClientConfig | null) =>
+      buildSnapshot({
+        slug,
+        config,
+        latestPerf: latestByClient.get(slug) ?? null,
+        periodSends: days > 1 ? periodSendsByClient.get(slug) ?? null : null,
+        lifetime: lifetimeByClient.get(slug) ?? null,
+        capacity: capacityByClient.get(slug) ?? null,
+        health: healthByClient.get(slug) ?? null,
+        dailyFacts: factsByClient.get(slug) ?? null,
+      })
+
+    // 5. Group by parent_client — children with the same parent become ONE summary
     const parentGroups = new Map<string, ClientConfig[]>()
     const standaloneConfigs: ClientConfig[] = []
 
-    for (const config of configs as ClientConfig[]) {
+    for (const config of configs) {
       if (config.parent_client) {
         const group = parentGroups.get(config.parent_client) ?? []
         group.push(config)
@@ -287,18 +437,15 @@ export const getClientSummaries = cache(
 
     const summaries: ClientSummary[] = []
 
-    // 5. Add standalone summaries (clients without parent_client)
     for (const config of standaloneConfigs) {
       summaries.push({
         config,
-        latest: latestByClient.get(config.client) ?? null,
+        latest: snapshotFor(config.client, config),
         alertCount: alertCounts.get(config.client) ?? 0,
       })
     }
 
-    // 6. Add aggregated parent summaries
     for (const [parentSlug, childConfigs] of parentGroups) {
-      // Build a synthetic parent config
       const parentConfig: ClientConfig = {
         ...childConfigs[0],
         client: parentSlug,
@@ -319,16 +466,14 @@ export const getClientSummaries = cache(
         ),
       }
 
-      // Aggregate latest snapshots from all children
       const childSnapshots = childConfigs
-        .map((c) => latestByClient.get(c.client))
+        .map((c) => snapshotFor(c.client, c))
         .filter((s): s is ClientSnapshot => s != null)
       const aggregated = aggregateSnapshots(childSnapshots)
       if (aggregated) {
         aggregated.client = parentSlug
       }
 
-      // Sum alert counts across children
       const totalAlerts = childConfigs.reduce(
         (sum, c) => sum + (alertCounts.get(c.client) ?? 0),
         0
@@ -342,6 +487,62 @@ export const getClientSummaries = cache(
     }
 
     return summaries
+  }
+)
+
+/**
+ * Latest aggregated snapshot for ONE client (resolving parent → children).
+ * Used by the client detail page header/overview.
+ */
+export const getClientSnapshot = cache(
+  async (client: string): Promise<ClientSnapshot | null> => {
+    const supabase = createServerClient()
+    const slugs = await resolveClientSlugs(client)
+
+    const since = new Date()
+    since.setDate(since.getDate() - 14)
+
+    const [{ data: perfRows }, bundles, { data: configRows }] =
+      await Promise.all([
+        supabase
+          .from("vw_cockpit_daily_client_perf")
+          .select("*")
+          .in("client", slugs)
+          .gte("snapshot_date", since.toISOString().split("T")[0])
+          .order("snapshot_date", { ascending: false }),
+        fetchClientBundles(slugs),
+        supabase
+          .from("client_analytics_config")
+          .select("*")
+          .in("client", slugs),
+      ])
+
+    const latestByClient = new Map<string, PerfRow>()
+    for (const r of (perfRows ?? []) as PerfRow[]) {
+      if (!latestByClient.has(r.client)) latestByClient.set(r.client, r)
+    }
+    const configBySlug = new Map<string, ClientConfig>()
+    for (const c of (configRows ?? []) as ClientConfig[]) {
+      configBySlug.set(c.client, c)
+    }
+
+    const snaps = slugs
+      .map((s) =>
+        buildSnapshot({
+          slug: s,
+          config: configBySlug.get(s) ?? defaultConfig(s),
+          latestPerf: latestByClient.get(s) ?? null,
+          lifetime: bundles.lifetimeByClient.get(s) ?? null,
+          capacity: bundles.capacityByClient.get(s) ?? null,
+          health: bundles.healthByClient.get(s) ?? null,
+          dailyFacts: bundles.factsByClient.get(s) ?? null,
+        })
+      )
+      .filter((s): s is ClientSnapshot => s != null)
+
+    const aggregated = aggregateSnapshots(snaps)
+    if (aggregated) aggregated.client = client
+    return aggregated
   }
 )
 
@@ -359,16 +560,15 @@ export const getClientRecentHistory = cache(
     cutoff.setDate(cutoff.getDate() - days)
     const cutoffStr = cutoff.toISOString().split("T")[0]
 
-    const { data: snapshots } = await supabase
-      .from("analytics_snapshots")
+    const { data: rows } = await supabase
+      .from("vw_cockpit_daily_client_perf")
       .select("snapshot_date, emails_sent_count")
       .in("client", slugs)
       .gte("snapshot_date", cutoffStr)
       .order("snapshot_date", { ascending: true })
 
-    // Aggregate by date across child slugs
     const byDate = new Map<string, number>()
-    for (const s of snapshots ?? []) {
+    for (const s of rows ?? []) {
       byDate.set(
         s.snapshot_date,
         (byDate.get(s.snapshot_date) ?? 0) + (s.emails_sent_count ?? 0)
@@ -397,16 +597,15 @@ export const getClientSendReplyHistory = cache(
     cutoff.setDate(cutoff.getDate() - days)
     const cutoffStr = cutoff.toISOString().split("T")[0]
 
-    const { data: snapshots } = await supabase
-      .from("analytics_snapshots")
+    const { data: rows } = await supabase
+      .from("vw_cockpit_daily_client_perf")
       .select("snapshot_date, emails_sent_count, positive_replies_count")
       .in("client", slugs)
       .gte("snapshot_date", cutoffStr)
       .order("snapshot_date", { ascending: true })
 
-    // Aggregate by date across child slugs
     const byDate = new Map<string, { sent: number; replies: number }>()
-    for (const s of snapshots ?? []) {
+    for (const s of rows ?? []) {
       const existing = byDate.get(s.snapshot_date) ?? { sent: 0, replies: 0 }
       existing.sent += s.emails_sent_count ?? 0
       existing.replies += s.positive_replies_count ?? 0
@@ -432,36 +631,12 @@ export interface AnomalyHistoryPoint {
 
 export const getClientAnomalyHistory = cache(
   async (client: string, days: number = 14): Promise<AnomalyHistoryPoint[]> => {
-    const supabase = createServerClient()
-    const slugs = await resolveClientSlugs(client)
-
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
-    const cutoffStr = cutoff.toISOString().split("T")[0]
-
-    const { data: snapshots } = await supabase
-      .from("analytics_snapshots")
-      .select("snapshot_date, emails_sent_count, positive_replies_count")
-      .in("client", slugs)
-      .gte("snapshot_date", cutoffStr)
-      .order("snapshot_date", { ascending: true })
-
-    // Aggregate by date across child slugs
-    const byDate = new Map<string, { sent: number; replies: number }>()
-    for (const s of snapshots ?? []) {
-      const existing = byDate.get(s.snapshot_date) ?? { sent: 0, replies: 0 }
-      existing.sent += s.emails_sent_count ?? 0
-      existing.replies += s.positive_replies_count ?? 0
-      byDate.set(s.snapshot_date, existing)
-    }
-
-    return Array.from(byDate.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, { sent, replies }]) => ({
-        date,
-        emailsSent: sent,
-        positiveReplies: replies,
-      }))
+    const history = await getClientSendReplyHistory(client, days)
+    return history.map((h) => ({
+      date: h.date,
+      emailsSent: h.emailsSent,
+      positiveReplies: h.positiveReplies,
+    }))
   }
 )
 
@@ -475,10 +650,9 @@ export interface ReplyHistoryPoint {
 }
 
 /**
- * Get daily positive replies and other replies for a client.
- * Positive replies from analytics_snapshots. Total replies computed as
- * day-over-day deltas from campaign_analytics_snapshots.reply_count.
- * Handles parent-client aggregation via resolveClientSlugs.
+ * Daily positive + other replies for a client, straight from
+ * vw_cockpit_daily_client_perf (sp_daily_campaign_facts has true daily
+ * replies AND positive_replies — no more day-over-day delta reconstruction).
  */
 export const getClientReplyHistory = cache(
   async (client: string, days: number = 30): Promise<{ history: ReplyHistoryPoint[]; totalInterested: number }> => {
@@ -489,91 +663,44 @@ export const getClientReplyHistory = cache(
     cutoff.setDate(cutoff.getDate() - days)
     const cutoffStr = cutoff.toISOString().split("T")[0]
 
-    // 1. Daily positive replies from analytics_snapshots
-    const { data: analyticsSnaps } = await supabase
-      .from("analytics_snapshots")
-      .select("snapshot_date, positive_replies_count")
-      .in("client", slugs)
-      .gte("snapshot_date", cutoffStr)
-      .order("snapshot_date", { ascending: true })
-
-    const positiveByDate = new Map<string, number>()
-    for (const s of analyticsSnaps ?? []) {
-      positiveByDate.set(
-        s.snapshot_date,
-        (positiveByDate.get(s.snapshot_date) ?? 0) + (s.positive_replies_count ?? 0)
-      )
-    }
-
-    // 2. Total replies from campaign_analytics_snapshots (day-over-day deltas)
-    const { data: campaigns } = await supabase
-      .from("campaign_registry")
-      .select("smartlead_campaign_id")
-      .in("client", slugs)
-      .eq("is_active", true)
-
-    const totalReplyByDate = new Map<string, number>()
-    if (campaigns && campaigns.length > 0) {
-      const campaignIds = campaigns.map((c) => c.smartlead_campaign_id)
-
-      const { data: campaignSnaps } = await supabase
-        .from("campaign_analytics_snapshots")
-        .select("campaign_id, snapshot_date, reply_count")
-        .in("campaign_id", campaignIds)
+    const [{ data: rows }, { data: lifetimeRows }] = await Promise.all([
+      supabase
+        .from("vw_cockpit_daily_client_perf")
+        .select("snapshot_date, positive_replies_count, reply_count")
+        .in("client", slugs)
         .gte("snapshot_date", cutoffStr)
-        .order("snapshot_date", { ascending: true })
+        .order("snapshot_date", { ascending: true }),
+      supabase
+        .from("vw_cockpit_client_lifetime")
+        .select("client, all_time_interested")
+        .in("client", slugs),
+    ])
 
-      if (campaignSnaps) {
-        // Group by campaign_id, compute day-over-day deltas
-        const byCampaign = new Map<number, { date: string; replyCount: number }[]>()
-        for (const s of campaignSnaps) {
-          const arr = byCampaign.get(s.campaign_id) ?? []
-          arr.push({ date: s.snapshot_date, replyCount: s.reply_count ?? 0 })
-          byCampaign.set(s.campaign_id, arr)
-        }
-
-        for (const [, entries] of byCampaign) {
-          for (let i = 1; i < entries.length; i++) {
-            const delta = entries[i].replyCount - entries[i - 1].replyCount
-            if (delta > 0) {
-              totalReplyByDate.set(
-                entries[i].date,
-                (totalReplyByDate.get(entries[i].date) ?? 0) + delta
-              )
-            }
-          }
-        }
-      }
+    const byDate = new Map<string, { positive: number; total: number }>()
+    for (const s of rows ?? []) {
+      const existing = byDate.get(s.snapshot_date) ?? { positive: 0, total: 0 }
+      existing.positive += s.positive_replies_count ?? 0
+      existing.total += s.reply_count ?? 0
+      byDate.set(s.snapshot_date, existing)
     }
 
-    // 3. Get total interested from latest analytics snapshot per child slug
-    const { data: latestSnaps } = await supabase
-      .from("analytics_snapshots")
-      .select("client, all_time_interested")
-      .in("client", slugs)
-      .order("snapshot_date", { ascending: false })
-
-    let totalInterested = 0
-    const seenSlugs = new Set<string>()
-    for (const s of latestSnaps ?? []) {
-      if (!seenSlugs.has(s.client)) {
-        seenSlugs.add(s.client)
-        totalInterested += s.all_time_interested ?? 0
-      }
-    }
-
-    // 4. Combine into history with cumulative line
-    const allDates = new Set([...positiveByDate.keys(), ...totalReplyByDate.keys()])
-    const sortedDates = Array.from(allDates).sort()
+    const totalInterested = (lifetimeRows ?? []).reduce(
+      (sum, r) => sum + (r.all_time_interested ?? 0),
+      0
+    )
 
     let cumulative = 0
-    const history: ReplyHistoryPoint[] = sortedDates.map((date) => {
-      const positive = positiveByDate.get(date) ?? 0
-      const totalReplies = totalReplyByDate.get(date) ?? 0
-      const other = Math.max(0, totalReplies - positive)
-      cumulative += positive
-      return { date, positiveReplies: positive, otherReplies: other, cumulativeInterested: cumulative }
-    })
+    const history: ReplyHistoryPoint[] = Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, { positive, total }]) => {
+        cumulative += positive
+        return {
+          date,
+          positiveReplies: positive,
+          otherReplies: Math.max(0, total - positive),
+          cumulativeInterested: cumulative,
+        }
+      })
 
     return { history, totalInterested }
   }
@@ -588,12 +715,6 @@ export interface PerformanceHistoryPoint {
   totalReplies: number
 }
 
-/**
- * Get daily performance data for time-range comparison.
- * emailsSent and positiveReplies from analytics_snapshots.
- * totalReplies computed as day-over-day deltas from campaign_analytics_snapshots.reply_count.
- * Handles parent-client aggregation via resolveClientSlugs.
- */
 export const getClientPerformanceHistory = cache(
   async (client: string, days: number = 60): Promise<PerformanceHistoryPoint[]> => {
     const supabase = createServerClient()
@@ -603,75 +724,34 @@ export const getClientPerformanceHistory = cache(
     cutoff.setDate(cutoff.getDate() - days)
     const cutoffStr = cutoff.toISOString().split("T")[0]
 
-    // 1. Daily sends + positive replies from analytics_snapshots
-    const { data: analyticsSnaps } = await supabase
-      .from("analytics_snapshots")
-      .select("snapshot_date, emails_sent_count, positive_replies_count")
+    const { data: rows } = await supabase
+      .from("vw_cockpit_daily_client_perf")
+      .select("snapshot_date, emails_sent_count, positive_replies_count, reply_count")
       .in("client", slugs)
       .gte("snapshot_date", cutoffStr)
       .order("snapshot_date", { ascending: true })
 
-    const byDate = new Map<string, { sent: number; positive: number }>()
-    for (const s of analyticsSnaps ?? []) {
-      const existing = byDate.get(s.snapshot_date) ?? { sent: 0, positive: 0 }
+    const byDate = new Map<
+      string,
+      { sent: number; positive: number; total: number }
+    >()
+    for (const s of rows ?? []) {
+      const existing =
+        byDate.get(s.snapshot_date) ?? { sent: 0, positive: 0, total: 0 }
       existing.sent += s.emails_sent_count ?? 0
       existing.positive += s.positive_replies_count ?? 0
+      existing.total += s.reply_count ?? 0
       byDate.set(s.snapshot_date, existing)
     }
 
-    // 2. Total replies from campaign_analytics_snapshots (day-over-day deltas)
-    const { data: campaigns } = await supabase
-      .from("campaign_registry")
-      .select("smartlead_campaign_id")
-      .in("client", slugs)
-      .eq("is_active", true)
-
-    const totalReplyByDate = new Map<string, number>()
-    if (campaigns && campaigns.length > 0) {
-      const campaignIds = campaigns.map((c) => c.smartlead_campaign_id)
-
-      const { data: campaignSnaps } = await supabase
-        .from("campaign_analytics_snapshots")
-        .select("campaign_id, snapshot_date, reply_count")
-        .in("campaign_id", campaignIds)
-        .gte("snapshot_date", cutoffStr)
-        .order("snapshot_date", { ascending: true })
-
-      if (campaignSnaps) {
-        const byCampaign = new Map<number, { date: string; replyCount: number }[]>()
-        for (const s of campaignSnaps) {
-          const arr = byCampaign.get(s.campaign_id) ?? []
-          arr.push({ date: s.snapshot_date, replyCount: s.reply_count ?? 0 })
-          byCampaign.set(s.campaign_id, arr)
-        }
-
-        for (const [, entries] of byCampaign) {
-          for (let i = 1; i < entries.length; i++) {
-            const delta = entries[i].replyCount - entries[i - 1].replyCount
-            if (delta > 0) {
-              totalReplyByDate.set(
-                entries[i].date,
-                (totalReplyByDate.get(entries[i].date) ?? 0) + delta
-              )
-            }
-          }
-        }
-      }
-    }
-
-    // 3. Combine
-    const allDates = new Set([...byDate.keys(), ...totalReplyByDate.keys()])
-    return Array.from(allDates)
-      .sort()
-      .map((date) => {
-        const analytics = byDate.get(date) ?? { sent: 0, positive: 0 }
-        return {
-          date,
-          emailsSent: analytics.sent,
-          positiveReplies: analytics.positive,
-          totalReplies: totalReplyByDate.get(date) ?? 0,
-        }
-      })
+    return Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, { sent, positive, total }]) => ({
+        date,
+        emailsSent: sent,
+        positiveReplies: positive,
+        totalReplies: total,
+      }))
   }
 )
 
@@ -696,51 +776,65 @@ export const getClientComparisonData = cache(
     cutoff.setDate(cutoff.getDate() - days)
     const cutoffStr = cutoff.toISOString().split("T")[0]
 
-    // Fetch analytics snapshots for selected clients
-    const { data: snapshots } = await supabase
-      .from("analytics_snapshots")
-      .select(
-        "client, snapshot_date, emails_sent_count, positive_replies_count, all_time_emails_sent, all_time_interested, estimated_max_capacity, daily_capacity"
-      )
-      .in("client", clients)
-      .gte("snapshot_date", cutoffStr)
-      .order("snapshot_date", { ascending: true })
+    const [{ data: perfRows }, { data: healthRows }] = await Promise.all([
+      supabase
+        .from("vw_cockpit_daily_client_perf")
+        .select("client, snapshot_date, emails_sent_count, positive_replies_count")
+        .in("client", clients)
+        .gte("snapshot_date", cutoffStr)
+        .order("snapshot_date", { ascending: true }),
+      supabase
+        .from("vw_cockpit_domain_health_daily")
+        .select("client, snapshot_date, avg_health_pct")
+        .in("client", clients)
+        .gte("snapshot_date", cutoffStr),
+    ])
 
-    // Group by date
-    const dateMap = new Map<string, Map<string, { sent: number; replies: number; health: number }>>()
-
-    if (snapshots) {
-      for (const s of snapshots) {
-        if (!dateMap.has(s.snapshot_date)) {
-          dateMap.set(s.snapshot_date, new Map())
-        }
-        const clientMap = dateMap.get(s.snapshot_date)!
-        const sent = s.emails_sent_count ?? 0
-        const replies = s.positive_replies_count ?? 0
-        const capacity = s.estimated_max_capacity ?? 0
-        const dailyCap = s.daily_capacity ?? 0
-        // Use daily_capacity / estimated_max_capacity as health proxy
-        const health = capacity > 0 ? (dailyCap / capacity) * 100 : 0
-        clientMap.set(s.client, { sent, replies, health })
-      }
+    // Perf per date/client
+    const dateMap = new Map<string, Map<string, { sent: number; replies: number }>>()
+    for (const s of (perfRows ?? []) as PerfRow[]) {
+      if (!dateMap.has(s.snapshot_date)) dateMap.set(s.snapshot_date, new Map())
+      dateMap.get(s.snapshot_date)!.set(s.client, {
+        sent: s.emails_sent_count ?? 0,
+        replies: s.positive_replies_count ?? 0,
+      })
     }
 
+    // Real mailbox health (avg warmup) per date/client
+    const healthMap = new Map<string, Map<string, { sum: number; count: number }>>()
+    for (const h of healthRows ?? []) {
+      if (h.avg_health_pct == null) continue
+      if (!healthMap.has(h.snapshot_date)) healthMap.set(h.snapshot_date, new Map())
+      const clientMap = healthMap.get(h.snapshot_date)!
+      const entry = clientMap.get(h.client) ?? { sum: 0, count: 0 }
+      entry.sum += Number(h.avg_health_pct)
+      entry.count++
+      clientMap.set(h.client, entry)
+    }
+
+    const allDates = new Set([...dateMap.keys(), ...healthMap.keys()])
     const sendVolume: ComparisonDataPoint[] = []
     const replyRate: ComparisonDataPoint[] = []
     const mailboxHealth: ComparisonDataPoint[] = []
 
-    for (const [date, clientMap] of dateMap) {
+    for (const date of Array.from(allDates).sort()) {
+      const clientMap = dateMap.get(date)
+      const healthClientMap = healthMap.get(date)
       const sendPoint: ComparisonDataPoint = { date }
       const replyPoint: ComparisonDataPoint = { date }
       const healthPoint: ComparisonDataPoint = { date }
 
       for (const client of clients) {
-        const data = clientMap.get(client)
+        const data = clientMap?.get(client)
         sendPoint[client] = data?.sent ?? 0
-        replyPoint[client] = data && data.sent > 0
-          ? Number(((data.replies / data.sent) * 100).toFixed(2))
+        replyPoint[client] =
+          data && data.sent > 0
+            ? Number(((data.replies / data.sent) * 100).toFixed(2))
+            : 0
+        const health = healthClientMap?.get(client)
+        healthPoint[client] = health
+          ? Number((health.sum / health.count).toFixed(1))
           : 0
-        healthPoint[client] = data ? Number(data.health.toFixed(1)) : 0
       }
 
       sendVolume.push(sendPoint)
@@ -755,45 +849,49 @@ export const getClientComparisonData = cache(
 export const getDailySendHistory = cache(
   async (days: number = 14): Promise<DailySendDataPoint[]> => {
     const supabase = createServerClient()
+    const activeSlugs = await getActiveClients()
 
-    // Get active configs with per-day targets
-    const { data: configs } = await supabase
-      .from("client_analytics_config")
-      .select("daily_email_target, daily_targets")
-      .eq("is_active", true)
-
-    // Get snapshots for the last N days across all clients
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - days)
     const cutoffStr = cutoff.toISOString().split("T")[0]
 
-    const { data: snapshots } = await supabase
-      .from("analytics_snapshots")
-      .select("snapshot_date, emails_sent_count")
-      .gte("snapshot_date", cutoffStr)
-      .order("snapshot_date", { ascending: true })
+    const [{ data: configs }, { data: rows }] = await Promise.all([
+      supabase
+        .from("client_analytics_config")
+        .select("client, daily_email_target, daily_targets")
+        .in("client", activeSlugs),
+      supabase
+        .from("vw_cockpit_daily_client_perf")
+        .select("snapshot_date, emails_sent_count")
+        .in("client", activeSlugs)
+        .gte("snapshot_date", cutoffStr)
+        .order("snapshot_date", { ascending: true }),
+    ])
 
-    // Group by date and sum emails_sent_count
     const byDate = new Map<string, number>()
-    if (snapshots) {
-      for (const s of snapshots) {
-        const d = s.snapshot_date
-        byDate.set(d, (byDate.get(d) ?? 0) + (s.emails_sent_count ?? 0))
-      }
+    for (const s of rows ?? []) {
+      byDate.set(
+        s.snapshot_date,
+        (byDate.get(s.snapshot_date) ?? 0) + (s.emails_sent_count ?? 0)
+      )
     }
 
-    // Compute combined target per date across all active configs
     const cfgs = configs ?? []
-    return Array.from(byDate.entries()).map(([date, totalSent]) => {
-      const combinedTarget = cfgs.reduce((sum, c) => {
-        return sum + getTargetForDate(
-          date,
-          c.daily_email_target ?? 0,
-          c.daily_targets as DailyTargets | null
-        )
-      }, 0)
-      return { date, totalSent, target: combinedTarget }
-    })
+    return Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, totalSent]) => {
+        const combinedTarget = cfgs.reduce((sum, c) => {
+          return (
+            sum +
+            getTargetForDate(
+              date,
+              c.daily_email_target ?? 0,
+              (c.daily_targets as DailyTargets | null) ?? null
+            )
+          )
+        }, 0)
+        return { date, totalSent, target: combinedTarget }
+      })
   }
 )
 
@@ -821,14 +919,9 @@ export interface DigestData {
 
 export const getDigestData = cache(async (): Promise<DigestData> => {
   const supabase = createServerClient()
+  const activeSlugs = await getActiveClients()
 
-  // Get active client configs
-  const { data: configs } = await supabase
-    .from("client_analytics_config")
-    .select("client, display_name, parent_client")
-    .eq("is_active", true)
-
-  if (!configs || configs.length === 0)
+  if (activeSlugs.length === 0)
     return {
       date: new Date().toISOString().split("T")[0],
       clients: [],
@@ -838,70 +931,63 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
       overallReplyRate: 0,
     }
 
-  const allSlugs = configs.map((c) => c.client)
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 7)
 
-  // Latest analytics snapshot per client
-  const { data: allSnapshots } = await supabase
-    .from("analytics_snapshots")
-    .select(
-      "client, emails_sent_count, positive_replies_count, all_time_emails_sent, all_time_interested, snapshot_date"
-    )
-    .in("client", allSlugs)
-    .order("snapshot_date", { ascending: false })
+  const [{ data: configRows }, { data: perfRows }, { data: lifetimeRows }] =
+    await Promise.all([
+      supabase
+        .from("client_analytics_config")
+        .select("client, display_name, parent_client")
+        .in("client", activeSlugs),
+      supabase
+        .from("vw_cockpit_daily_client_perf")
+        .select("*")
+        .in("client", activeSlugs)
+        .gte("snapshot_date", cutoff.toISOString().split("T")[0])
+        .order("snapshot_date", { ascending: false }),
+      supabase
+        .from("vw_cockpit_client_lifetime")
+        .select("client, all_time_emails_sent, all_time_interested")
+        .in("client", activeSlugs),
+    ])
 
-  const latestByClient = new Map<
+  const configBySlug = new Map<
     string,
-    {
-      emails_sent_count: number
-      positive_replies_count: number
-      all_time_emails_sent: number
-      all_time_interested: number
-      snapshot_date: string
-    }
+    { client: string; display_name: string | null; parent_client: string | null }
   >()
-  if (allSnapshots) {
-    for (const s of allSnapshots) {
-      if (!latestByClient.has(s.client)) {
-        latestByClient.set(s.client, s)
-      }
-    }
+  for (const c of configRows ?? []) configBySlug.set(c.client, c)
+
+  const latestByClient = new Map<string, PerfRow>()
+  for (const s of (perfRows ?? []) as PerfRow[]) {
+    if (!latestByClient.has(s.client)) latestByClient.set(s.client, s)
   }
 
-  // Total replies from campaign_analytics_snapshots
-  const { data: campaignSnaps } = await supabase
-    .from("campaign_analytics_snapshots")
-    .select("campaign_id, reply_count, snapshot_date, campaign_registry!inner(client)")
-    .in("campaign_registry.client", allSlugs)
-    .order("snapshot_date", { ascending: false })
+  const lifetimeByClient = new Map<
+    string,
+    { all_time_emails_sent: number; all_time_interested: number }
+  >()
+  for (const r of lifetimeRows ?? []) lifetimeByClient.set(r.client, r)
 
-  const repliesByClient = new Map<string, number>()
-  const seenCampaigns = new Set<number>()
-  if (campaignSnaps) {
-    for (const cs of campaignSnaps) {
-      if (!seenCampaigns.has(cs.campaign_id)) {
-        seenCampaigns.add(cs.campaign_id)
-        const client = (cs.campaign_registry as unknown as { client: string })?.client
-        if (client) {
-          repliesByClient.set(client, (repliesByClient.get(client) ?? 0) + (cs.reply_count ?? 0))
-        }
-      }
-    }
-  }
-
-  // Group children into parents
-  const parentGroups = new Map<string, typeof configs>()
-  const standalones: typeof configs = []
-  for (const c of configs) {
-    if (c.parent_client) {
-      const group = parentGroups.get(c.parent_client) ?? []
-      group.push(c)
-      parentGroups.set(c.parent_client, group)
+  // Group children into parents (via app config hierarchy)
+  const parentGroups = new Map<string, string[]>()
+  const standalones: string[] = []
+  for (const slug of activeSlugs) {
+    const parent = configBySlug.get(slug)?.parent_client
+    if (parent) {
+      const group = parentGroups.get(parent) ?? []
+      group.push(slug)
+      parentGroups.set(parent, group)
     } else {
-      standalones.push(c)
+      standalones.push(slug)
     }
   }
 
-  const clientRows: DigestClientRow[] = []
+  const titleize = (slug: string) =>
+    slug
+      .split(/[-_]/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ")
 
   function buildRow(
     slug: string,
@@ -918,10 +1004,13 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
       if (snap) {
         sent += snap.emails_sent_count ?? 0
         interested += snap.positive_replies_count ?? 0
-        allTimeSent += snap.all_time_emails_sent ?? 0
-        allTimeInt += snap.all_time_interested ?? 0
+        totalR += snap.reply_count ?? 0
       }
-      totalR += repliesByClient.get(cs) ?? 0
+      const lt = lifetimeByClient.get(cs)
+      if (lt) {
+        allTimeSent += lt.all_time_emails_sent ?? 0
+        allTimeInt += lt.all_time_interested ?? 0
+      }
     }
     return {
       client: slug,
@@ -935,35 +1024,18 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
     }
   }
 
-  // Standalone clients
-  for (const c of standalones) {
-    // Skip if this slug is actually a parent for a group (children exist)
-    if (parentGroups.has(c.client)) continue
-    const dn =
-      c.display_name ??
-      c.client
-        .split(/[-_]/)
-        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ")
-    clientRows.push(buildRow(c.client, dn, [c.client]))
+  const clientRows: DigestClientRow[] = []
+
+  for (const slug of standalones) {
+    if (parentGroups.has(slug)) continue
+    const dn = configBySlug.get(slug)?.display_name ?? titleize(slug)
+    clientRows.push(buildRow(slug, dn, [slug]))
   }
 
-  // Parent groups
   for (const [parentSlug, children] of parentGroups) {
-    const dn = parentSlug
-      .split(/[-_]/)
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ")
-    clientRows.push(
-      buildRow(
-        parentSlug,
-        dn,
-        children.map((c) => c.client)
-      )
-    )
+    clientRows.push(buildRow(parentSlug, titleize(parentSlug), children))
   }
 
-  // Sort by emails sent descending
   clientRows.sort((a, b) => b.emailsSent - a.emailsSent)
 
   const totalSent = clientRows.reduce((s, c) => s + c.emailsSent, 0)
@@ -972,11 +1044,13 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
   const totalAllTimeSent = clientRows.reduce((s, c) => s + c.allTimeEmailsSent, 0)
   const totalAllTimeInt = clientRows.reduce((s, c) => s + c.allTimeInterested, 0)
 
+  const latestDate = Array.from(latestByClient.values()).reduce<string | null>(
+    (max, r) => (max === null || r.snapshot_date > max ? r.snapshot_date : max),
+    null
+  )
+
   return {
-    date:
-      allSnapshots && allSnapshots.length > 0
-        ? allSnapshots[0].snapshot_date
-        : new Date().toISOString().split("T")[0],
+    date: latestDate ?? new Date().toISOString().split("T")[0],
     clients: clientRows,
     totalSent,
     totalInterested,

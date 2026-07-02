@@ -18,6 +18,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { FLAGS, DISABLED_ACTION_MESSAGE } from "@/lib/flags"
 
 interface CampaignActionsProps {
   smartleadCampaignId: number
@@ -69,40 +70,52 @@ export function CampaignActions({
         {isActive ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-950"
-                onClick={() => setPauseDialogOpen(true)}
-                disabled={loading}
-              >
-                {loading ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Pause className="h-3.5 w-3.5" />
-                )}
-              </Button>
+              <span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-950"
+                  onClick={() => setPauseDialogOpen(true)}
+                  disabled={loading || !FLAGS.campaignActions}
+                >
+                  {loading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Pause className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </span>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Pause campaign sending</TooltipContent>
+            <TooltipContent side="bottom">
+              {FLAGS.campaignActions
+                ? "Pause campaign sending"
+                : DISABLED_ACTION_MESSAGE}
+            </TooltipContent>
           </Tooltip>
         ) : (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                onClick={() => updateStatus("START")}
-                disabled={loading}
-              >
-                {loading ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Play className="h-3.5 w-3.5" />
-                )}
-              </Button>
+              <span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                  onClick={() => updateStatus("START")}
+                  disabled={loading || !FLAGS.campaignActions}
+                >
+                  {loading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Play className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </span>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Resume campaign sending</TooltipContent>
+            <TooltipContent side="bottom">
+              {FLAGS.campaignActions
+                ? "Resume campaign sending"
+                : DISABLED_ACTION_MESSAGE}
+            </TooltipContent>
           </Tooltip>
         )}
 
