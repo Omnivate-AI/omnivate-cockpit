@@ -221,7 +221,7 @@ export default async function DigestPage() {
                 >
                   <span
                     className={`flex h-2 w-2 shrink-0 rounded-full ${
-                      a.severity === "critical"
+                      ["critical", "high"].includes(a.severity)
                         ? "bg-rose-500"
                         : "bg-amber-500"
                     }`}
@@ -234,7 +234,7 @@ export default async function DigestPage() {
                   </div>
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      a.severity === "critical"
+                      ["critical", "high"].includes(a.severity)
                         ? "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
                         : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                     }`}

@@ -31,11 +31,12 @@ export function LeadPipelineFunnel({ snapshot }: LeadPipelineFunnelProps) {
     )
   }
 
+  // "Ready Leads" (the pre-campaign lead bank) isn't tracked in sp_* —
+  // the funnel starts at leads loaded into campaigns.
   const stages: FunnelStage[] = [
-    { label: "Ready Leads", count: snapshot.ready_leads ?? 0, color: "bg-blue-100 border-blue-300 text-blue-800" },
     { label: "In Campaigns", count: snapshot.total_leads_in_campaigns ?? 0, color: "bg-violet-100 border-violet-300 text-violet-800" },
-    { label: "Sent", count: snapshot.all_time_emails_sent ?? 0, color: "bg-amber-100 border-amber-300 text-amber-800" },
-    { label: "Replies", count: snapshot.all_time_interested ?? 0, color: "bg-emerald-100 border-emerald-300 text-emerald-800" },
+    { label: "Emails Sent", count: snapshot.all_time_emails_sent ?? 0, color: "bg-amber-100 border-amber-300 text-amber-800" },
+    { label: "Interested", count: snapshot.all_time_interested ?? 0, color: "bg-emerald-100 border-emerald-300 text-emerald-800" },
   ]
 
   return (

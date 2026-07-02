@@ -112,7 +112,7 @@ export function NotificationCenter({ alertCount }: NotificationCenterProps) {
                       onClick={() => handleAlertClick(alert)}
                     >
                       <div className="mt-0.5 shrink-0">
-                        {alert.severity === "critical" ? (
+                        {["critical", "high"].includes(alert.severity) ? (
                           <AlertTriangle className="h-4 w-4 text-red-500" />
                         ) : (
                           <AlertCircle className="h-4 w-4 text-amber-500" />

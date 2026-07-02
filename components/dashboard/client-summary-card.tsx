@@ -108,12 +108,18 @@ export function ClientSummaryCard({ config, latest, alertCount, periodDays = 1 }
             </span>
           </div>
 
-          {/* Send progress */}
-          <ProgressBar
-            value={Math.min(sendPct, 100)}
-            label="Sends vs Target"
-            thresholds={{ warning: 100, critical: 50 }}
-          />
+          {/* Send progress — only meaningful when a target is configured */}
+          {periodTarget > 0 ? (
+            <ProgressBar
+              value={Math.min(sendPct, 100)}
+              label="Sends vs Target"
+              thresholds={{ warning: 100, critical: 50 }}
+            />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No daily send target set — configure in client Settings
+            </p>
+          )}
 
           {/* Runway: campaign + pipeline side by side */}
           {latest ? (
@@ -177,7 +183,10 @@ function RunwayGauge({
   warningDays: number
   criticalDays: number
 }) {
-  const d = isFinite(days) ? days : 0
+  // 999 is the "not tracked in sp_*" sentinel (e.g. lead-bank runway) —
+  // render it honestly instead of as a healthy-looking 999-day gauge.
+  const tracked = isFinite(days) && days < 999
+  const d = tracked ? days : 0
   const colors = runwayColor(d, warningDays, criticalDays)
   const maxDays = Math.max(warningDays * 2, 30)
   const pct = Math.min((d / maxDays) * 100, 100)
@@ -190,21 +199,33 @@ function RunwayGauge({
           {label}
         </span>
       </div>
-      <div className="flex items-baseline gap-1">
-        <span className={cn("text-lg font-bold tabular-nums leading-none", colors.text)}>
-          {d.toFixed(1)}
-        </span>
-        <span className="text-[10px] text-muted-foreground">days</span>
-      </div>
-      <div className="mt-1.5 h-1 w-full rounded-full bg-muted">
-        <div
-          className={cn("h-full rounded-full transition-all", colors.bg)}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <p className="mt-1 text-[10px] tabular-nums text-muted-foreground">
-        {formatLeads(leads)} leads
-      </p>
+      {tracked ? (
+        <>
+          <div className="flex items-baseline gap-1">
+            <span className={cn("text-lg font-bold tabular-nums leading-none", colors.text)}>
+              {d.toFixed(1)}
+            </span>
+            <span className="text-[10px] text-muted-foreground">days</span>
+          </div>
+          <div className="mt-1.5 h-1 w-full rounded-full bg-muted">
+            <div
+              className={cn("h-full rounded-full transition-all", colors.bg)}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] tabular-nums text-muted-foreground">
+            {formatLeads(leads)} leads
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="flex items-baseline gap-1">
+            <span className="text-lg font-bold leading-none text-muted-foreground">—</span>
+          </div>
+          <div className="mt-1.5 h-1 w-full rounded-full bg-muted" />
+          <p className="mt-1 text-[10px] text-muted-foreground">Not tracked</p>
+        </>
+      )}
     </div>
   )
 }

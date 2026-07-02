@@ -30,6 +30,10 @@ export function RunwayCapacityWidget({ snapshot, config }: RunwayCapacityWidgetP
   const campaignRunway = snapshot.campaign_runway_days ?? 0
   const pipelineRunway = snapshot.pipeline_runway_days ?? 0
 
+  // 999 is the "not tracked in sp_*" sentinel (lead-bank/pipeline runway)
+  const campaignTracked = isFinite(campaignRunway) && campaignRunway < 999
+  const pipelineTracked = isFinite(pipelineRunway) && pipelineRunway < 999
+
   const campaignRunwayColors = runwayColor(campaignRunway, warningDays, criticalDays)
   const pipelineRunwayColors = runwayColor(pipelineRunway, warningDays, criticalDays)
 
@@ -46,8 +50,8 @@ export function RunwayCapacityWidget({ snapshot, config }: RunwayCapacityWidgetP
     ? Math.min(100, Math.round((pipelineRunway / warningDays) * 100))
     : 0
 
-  const showUploadCallout = isFinite(campaignRunway) && campaignRunway < criticalDays
-  const showEnrichmentCallout = isFinite(pipelineRunway) && pipelineRunway < criticalDays
+  const showUploadCallout = campaignTracked && campaignRunway < criticalDays
+  const showEnrichmentCallout = pipelineTracked && pipelineRunway < criticalDays
 
   return (
     <Card>
@@ -60,27 +64,27 @@ export function RunwayCapacityWidget({ snapshot, config }: RunwayCapacityWidgetP
           <div>
             <div className="mb-1 flex items-center justify-between">
               <span className="text-sm font-medium">Campaign Runway</span>
-              <span className={`text-sm font-semibold tabular-nums ${campaignRunwayColors.text}`}>
-                {isFinite(campaignRunway) ? `${campaignRunway.toFixed(1)} days` : "N/A"}
+              <span className={`text-sm font-semibold tabular-nums ${campaignTracked ? campaignRunwayColors.text : "text-muted-foreground"}`}>
+                {campaignTracked ? `${campaignRunway.toFixed(1)} days` : "Not tracked"}
               </span>
             </div>
             <ProgressBar
-              value={campaignRunwayPct}
+              value={campaignTracked ? campaignRunwayPct : 0}
               showValue={false}
               thresholds={{ warning: Math.round((warningDays / warningDays) * 100), critical: Math.round((criticalDays / warningDays) * 100) }}
             />
           </div>
 
-          {/* Pipeline Runway */}
+          {/* Pipeline (lead-bank) Runway — not tracked in sp_* yet */}
           <div>
             <div className="mb-1 flex items-center justify-between">
               <span className="text-sm font-medium">Pipeline Runway</span>
-              <span className={`text-sm font-semibold tabular-nums ${pipelineRunwayColors.text}`}>
-                {isFinite(pipelineRunway) ? `${pipelineRunway.toFixed(1)} days` : "N/A"}
+              <span className={`text-sm font-semibold tabular-nums ${pipelineTracked ? pipelineRunwayColors.text : "text-muted-foreground"}`}>
+                {pipelineTracked ? `${pipelineRunway.toFixed(1)} days` : "Not tracked"}
               </span>
             </div>
             <ProgressBar
-              value={pipelineRunwayPct}
+              value={pipelineTracked ? pipelineRunwayPct : 0}
               showValue={false}
               thresholds={{ warning: Math.round((warningDays / warningDays) * 100), critical: Math.round((criticalDays / warningDays) * 100) }}
             />

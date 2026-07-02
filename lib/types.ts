@@ -1,15 +1,18 @@
+// Backed by vw_cockpit_domains (sp_domains + live account counts).
 export interface MailboxDomain {
   id: number
   domain_name: string
   client: string
   lifecycle_status: LifecycleStatus
   warmup_health_avg: number | null
+  latest_warmup_health: number | null
+  latest_inbox_placement: number | null
+  latest_bounce_rate: number | null
   platform: string | null
-  is_master_inbox: boolean
-  inboxkit_workspace_uid: string | null
-  inboxkit_domain_uid: string | null
+  provider: string | null
   catch_all_email: string | null
   catch_all_configured_at: string | null
+  burn_detected_at: string | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -39,16 +42,17 @@ export interface MailboxAccount {
   updated_at: string
 }
 
+// Backed by vw_cockpit_domain_health_daily (per-domain daily warmup avg
+// derived from sp_daily_mailbox_facts).
 export interface HealthSnapshot {
-  id: number
   domain_id: number
+  domain_name: string | null
+  client: string | null
   snapshot_date: string
   avg_health_pct: number | null
-  account_count: number | null
-  warmup_blocked_count: number | null
-  campaign_count_total: number | null
-  notes: string | null
-  created_at: string
+  warmup_health_pct: number | null
+  sent: number | null
+  replies: number | null
 }
 
 // Backed by vw_cockpit_actions (sp_actions_log + domain/mailbox attribution).

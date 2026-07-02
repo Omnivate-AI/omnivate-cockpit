@@ -948,7 +948,7 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
         .order("snapshot_date", { ascending: false }),
       supabase
         .from("vw_cockpit_client_lifetime")
-        .select("client, all_time_emails_sent, all_time_interested")
+        .select("client, all_time_emails_sent, all_time_interested, all_time_replies")
         .in("client", activeSlugs),
     ])
 
@@ -965,7 +965,7 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
 
   const lifetimeByClient = new Map<
     string,
-    { all_time_emails_sent: number; all_time_interested: number }
+    { all_time_emails_sent: number; all_time_interested: number; all_time_replies: number }
   >()
   for (const r of lifetimeRows ?? []) lifetimeByClient.set(r.client, r)
 
@@ -1004,12 +1004,13 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
       if (snap) {
         sent += snap.emails_sent_count ?? 0
         interested += snap.positive_replies_count ?? 0
-        totalR += snap.reply_count ?? 0
       }
       const lt = lifetimeByClient.get(cs)
       if (lt) {
         allTimeSent += lt.all_time_emails_sent ?? 0
         allTimeInt += lt.all_time_interested ?? 0
+        // "Total Replies" in the digest is lifetime (matches the old model)
+        totalR += lt.all_time_replies ?? 0
       }
     }
     return {

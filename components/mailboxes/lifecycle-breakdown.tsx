@@ -14,14 +14,16 @@ interface Segment {
 }
 
 export function LifecycleBreakdown({ data }: LifecycleBreakdownProps) {
+  // sp_* lifecycle vocabulary: active/resting (1-week rotation), reserve,
+  // warming, parked, burnt, retired. (ramping/draining don't exist anymore.)
   const segments: Segment[] = [
-    { label: "Active",   count: data.active,   color: "text-emerald-600", barColor: "bg-emerald-500" },
-    { label: "Ramping",  count: data.ramping,  color: "text-blue-600",    barColor: "bg-blue-500" },
-    { label: "Reserve",  count: data.reserve,  color: "text-amber-600",   barColor: "bg-amber-500" },
-    { label: "Warming",  count: data.warming,  color: "text-sky-600",     barColor: "bg-sky-500" },
-    { label: "Burnt",    count: data.burnt,    color: "text-rose-600",    barColor: "bg-rose-500" },
-    { label: "Draining", count: data.draining, color: "text-orange-600",  barColor: "bg-orange-500" },
-    { label: "Retired",  count: data.retired,  color: "text-gray-500",    barColor: "bg-gray-400" },
+    { label: "Active",  count: data.active,  color: "text-emerald-600", barColor: "bg-emerald-500" },
+    { label: "Resting", count: data.resting, color: "text-teal-600",    barColor: "bg-teal-500" },
+    { label: "Reserve", count: data.reserve, color: "text-amber-600",   barColor: "bg-amber-500" },
+    { label: "Warming", count: data.warming, color: "text-sky-600",     barColor: "bg-sky-500" },
+    { label: "Parked",  count: data.parked,  color: "text-zinc-500",    barColor: "bg-zinc-400" },
+    { label: "Burnt",   count: data.burnt,   color: "text-rose-600",    barColor: "bg-rose-500" },
+    { label: "Retired", count: data.retired, color: "text-gray-500",    barColor: "bg-gray-400" },
   ]
   const total = segments.reduce((s, x) => s + x.count, 0) || 1
 
