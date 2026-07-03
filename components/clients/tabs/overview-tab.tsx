@@ -11,6 +11,7 @@ import { RunwayCapacityWidget } from "@/components/clients/runway-capacity-widge
 import { AnomalyCallouts } from "@/components/clients/anomaly-callouts"
 import { replyRateColor, healthColor, alertSeverityColor } from "@/lib/design-tokens"
 import { getClientRecentHistory, getClientAnomalyHistory, getClientSendReplyHistory, getClientReplyHistory, getClientPerformanceHistory, getTodayLive, getClientProviderSplit } from "@/lib/queries/analytics"
+import { getClientRecipientSplit } from "@/lib/queries/portfolio"
 import { TodayLiveStrip } from "@/components/shared/today-live-strip"
 import { ProviderSplitCard } from "@/components/clients/provider-split-card"
 import { getClientAlerts, resolveClientSlugs } from "@/lib/queries/clients"
@@ -34,7 +35,7 @@ export async function OverviewTab({
   config,
   alertCount,
 }: OverviewTabProps) {
-  const [history, anomalyHistory, sendReplyHistory, topAlerts, totalReplies, replyData, performanceHistory, todayLive, providerSplit, childSlugs] = await Promise.all([
+  const [history, anomalyHistory, sendReplyHistory, topAlerts, totalReplies, replyData, performanceHistory, todayLive, providerSplit, recipientSplit, childSlugs] = await Promise.all([
     getClientRecentHistory(clientSlug, 7),
     getClientAnomalyHistory(clientSlug, 14),
     getClientSendReplyHistory(clientSlug, 14),
@@ -44,6 +45,7 @@ export async function OverviewTab({
     getClientPerformanceHistory(clientSlug, 60),
     getTodayLive(),
     getClientProviderSplit(clientSlug, 14),
+    getClientRecipientSplit(clientSlug, 14),
     resolveClientSlugs(clientSlug),
   ])
   const anomalies = detectAnomalies(anomalyHistory, config)
@@ -173,8 +175,8 @@ export async function OverviewTab({
         </CardContent>
       </Card>
 
-      {/* Provider Performance (sender infrastructure split) */}
-      <ProviderSplitCard rows={providerSplit} days={14} />
+      {/* Provider Performance (sender infrastructure + recipient inbox split) */}
+      <ProviderSplitCard rows={providerSplit} days={14} recipient={recipientSplit} />
 
       {/* Lead Pipeline Funnel */}
       <LeadPipelineFunnel snapshot={latestSnapshot} />

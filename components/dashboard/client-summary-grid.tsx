@@ -1,9 +1,15 @@
 import type { ClientSummary } from "@/lib/queries/analytics"
-import { ClientSummaryCard, computeHealthStatus } from "./client-summary-card"
+import {
+  ClientSummaryCard,
+  computeHealthStatus,
+  type ClientInfraBadge,
+} from "./client-summary-card"
 
 interface ClientSummaryGridProps {
   summaries: ClientSummary[]
   periodDays?: number
+  /** Per-client infra roll-up keyed by slug (PORT-2). */
+  infraByClient?: Record<string, ClientInfraBadge>
 }
 
 const STATUS_PRIORITY: Record<string, number> = {
@@ -13,7 +19,7 @@ const STATUS_PRIORITY: Record<string, number> = {
   healthy: 3,
 }
 
-export function ClientSummaryGrid({ summaries, periodDays = 1 }: ClientSummaryGridProps) {
+export function ClientSummaryGrid({ summaries, periodDays = 1, infraByClient }: ClientSummaryGridProps) {
   const sorted = [...summaries].sort((a, b) => {
     const statusA = computeHealthStatus(a.config, a.latest, a.alertCount)
     const statusB = computeHealthStatus(b.config, b.latest, b.alertCount)
@@ -33,6 +39,7 @@ export function ClientSummaryGrid({ summaries, periodDays = 1 }: ClientSummaryGr
           latest={s.latest}
           alertCount={s.alertCount}
           periodDays={periodDays}
+          infra={infraByClient?.[s.config.client]}
         />
       ))}
     </div>

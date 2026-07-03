@@ -1,0 +1,154 @@
+import { cache } from "react"
+import { createServerClient } from "@/lib/supabase/server"
+import { getActiveClients, resolveClientSlugs } from "@/lib/queries/clients"
+
+// Item-5 read models (migration cockpit_read_models_006):
+//   vw_cockpit_portfolio_health — per-client infra roll-up (PORT-2/3)
+//   vw_cockpit_recipient_daily  — sends+replies by RECIPIENT provider
+//   vw_cockpit_lifecycle_daily  — sp_mailbox_daily rollup (HEALTH-4)
+
+export interface PortfolioHealthRow {
+  client: string
+  active: boolean
+  open_alerts: number
+  at_risk_mailboxes: number
+  listed_domains: number
+  non_retired_mailboxes: number
+  active_mailboxes: number
+}
+
+export const getPortfolioHealth = cache(
+  async (): Promise<PortfolioHealthRow[]> => {
+    const supabase = createServerClient()
+    const activeSlugs = await getActiveClients()
+    const { data } = await supabase
+      .from("vw_cockpit_portfolio_health")
+      .select("*")
+      .in("client", activeSlugs)
+    return (data ?? []) as PortfolioHealthRow[]
+  }
+)
+
+// --- Recipient-provider performance ---
+
+export interface RecipientProviderRow {
+  provider: "google" | "microsoft" | "other"
+  sent: number
+  replies: number
+  replyRate: number
+}
+
+export const getClientRecipientSplit = cache(
+  async (client: string, days: number = 14): Promise<RecipientProviderRow[]> => {
+    const supabase = createServerClient()
+    const slugs = await resolveClientSlugs(client)
+
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - days)
+
+    const { data } = await supabase
+      .from("vw_cockpit_recipient_daily")
+      .select("*")
+      .in("client", slugs)
+      .gte("snapshot_date", cutoff.toISOString().split("T")[0])
+
+    const totals = {
+      google: { sent: 0, replies: 0 },
+      microsoft: { sent: 0, replies: 0 },
+      other: { sent: 0, replies: 0 },
+    }
+    for (const r of data ?? []) {
+      totals.google.sent += r.sent_google ?? 0
+      totals.google.replies += r.replies_google ?? 0
+      totals.microsoft.sent += r.sent_microsoft ?? 0
+      totals.microsoft.replies += r.replies_microsoft ?? 0
+      totals.other.sent += r.sent_other ?? 0
+      totals.other.replies += r.replies_other ?? 0
+    }
+
+    return (Object.keys(totals) as Array<keyof typeof totals>).map((p) => ({
+      provider: p,
+      sent: totals[p].sent,
+      replies: totals[p].replies,
+      replyRate:
+        totals[p].sent > 0 ? (totals[p].replies / totals[p].sent) * 100 : 0,
+    }))
+  }
+)
+
+// --- Lifecycle / health history (HEALTH-4) ---
+
+export interface LifecycleDailyRow {
+  client: string
+  snapshot_date: string
+  total: number
+  active: number
+  resting: number
+  reserve: number
+  warming: number
+  parked: number
+  burnt: number
+  retired: number
+  masters: number
+  avg_warmup: number | null
+  blacklisted: number
+  at_risk: number
+}
+
+export interface LifecycleHistory {
+  rows: LifecycleDailyRow[]
+  daysCollected: number
+  firstSnapshotDate: string | null
+}
+
+export const getClientLifecycleHistory = cache(
+  async (client: string, days: number = 30): Promise<LifecycleHistory> => {
+    const supabase = createServerClient()
+    const slugs = await resolveClientSlugs(client)
+
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - days)
+
+    const { data } = await supabase
+      .from("vw_cockpit_lifecycle_daily")
+      .select("*")
+      .in("client", slugs)
+      .gte("snapshot_date", cutoff.toISOString().split("T")[0])
+      .order("snapshot_date", { ascending: true })
+
+    // Aggregate child slugs per date (parent clients)
+    const byDate = new Map<string, LifecycleDailyRow>()
+    for (const r of (data ?? []) as LifecycleDailyRow[]) {
+      const e = byDate.get(r.snapshot_date)
+      if (!e) {
+        byDate.set(r.snapshot_date, { ...r, client })
+      } else {
+        e.total += r.total
+        e.active += r.active
+        e.resting += r.resting
+        e.reserve += r.reserve
+        e.warming += r.warming
+        e.parked += r.parked
+        e.burnt += r.burnt
+        e.retired += r.retired
+        e.masters += r.masters
+        e.blacklisted += r.blacklisted
+        e.at_risk += r.at_risk
+        // Weighted-enough average for a trend line
+        e.avg_warmup =
+          e.avg_warmup !== null && r.avg_warmup !== null
+            ? Number(((Number(e.avg_warmup) + Number(r.avg_warmup)) / 2).toFixed(1))
+            : e.avg_warmup ?? r.avg_warmup
+      }
+    }
+
+    const rows = Array.from(byDate.values()).sort((a, b) =>
+      a.snapshot_date.localeCompare(b.snapshot_date)
+    )
+    return {
+      rows,
+      daysCollected: rows.length,
+      firstSnapshotDate: rows[0]?.snapshot_date ?? null,
+    }
+  }
+)

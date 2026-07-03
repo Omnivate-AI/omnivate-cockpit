@@ -10,7 +10,9 @@ import { MailboxHealthChart } from "@/components/mailboxes/mailbox-health-chart"
 import { CapacityKPICards } from "@/components/mailboxes/capacity-kpi-cards"
 import { BlacklistStatusCard } from "@/components/mailboxes/blacklist-status-card"
 import { ClientOrdersCard } from "@/components/mailboxes/client-orders-card"
+import { LifecycleHistoryCard } from "@/components/mailboxes/lifecycle-history-card"
 import { getClientBlacklist, getClientOrders } from "@/lib/queries/orders"
+import { getClientLifecycleHistory } from "@/lib/queries/portfolio"
 import { LifecycleBreakdown } from "@/components/mailboxes/lifecycle-breakdown"
 import { MasterInboxCard } from "@/components/mailboxes/master-inbox-card"
 import { DomainPoolWrapper } from "@/components/mailboxes/domain-pool-wrapper"
@@ -24,7 +26,7 @@ interface MailboxesTabProps {
 }
 
 export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
-  const [mailboxes, healthTrend, capacity, masterInfo, personas, blacklist, orders] = await Promise.all([
+  const [mailboxes, healthTrend, capacity, masterInfo, personas, blacklist, orders, lifecycleHistory] = await Promise.all([
     getClientMailboxInventory(clientSlug),
     getClientDomainHealthTrend(clientSlug, 30),
     getClientCapacitySnapshot(clientSlug),
@@ -32,6 +34,7 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
     getClientPersonas(clientSlug),
     getClientBlacklist(clientSlug),
     getClientOrders(clientSlug),
+    getClientLifecycleHistory(clientSlug, 30),
   ])
 
   if (mailboxes.length === 0 || !capacity) {
@@ -69,6 +72,9 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
           <MailboxHealthChart data={healthTrend} />
         </CardContent>
       </Card>
+
+      {/* Lifecycle/health history from daily snapshots (HEALTH-4) */}
+      <LifecycleHistoryCard history={lifecycleHistory} />
 
       {/* DNSBL blacklist state for this client's domains (HEALTH-3) */}
       <BlacklistStatusCard summary={blacklist} />

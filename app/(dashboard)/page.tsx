@@ -1,7 +1,9 @@
 import { Suspense } from "react"
 import { Mail, MessageSquare, MessageCircle, Percent, Bell, Gauge } from "lucide-react"
 import { getGlobalKPIs, getClientSummaries, getDailySendHistory, getTodayLive } from "@/lib/queries/analytics"
+import { getPortfolioHealth } from "@/lib/queries/portfolio"
 import { TodayLiveStrip } from "@/components/shared/today-live-strip"
+import { PortfolioHealthStrip } from "@/components/dashboard/portfolio-health-strip"
 import { getTopAlerts } from "@/lib/queries/alerts"
 import { getRecentSpamRisks } from "@/lib/queries/campaigns"
 import { replyRateColor } from "@/lib/design-tokens"
@@ -31,14 +33,26 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
   const days = parseRangeDays(params.range)
   const rangeKey = params.range ?? "7d"
 
-  const [kpis, summaries, topAlerts, sendHistory, spamRisks, todayLive] = await Promise.all([
+  const [kpis, summaries, topAlerts, sendHistory, spamRisks, todayLive, portfolio] = await Promise.all([
     getGlobalKPIs(days),
     getClientSummaries(days),
     getTopAlerts(5),
     getDailySendHistory(days),
     getRecentSpamRisks(7, 3),
     getTodayLive(),
+    getPortfolioHealth(),
   ])
+
+  const infraByClient = Object.fromEntries(
+    portfolio.map((p) => [
+      p.client,
+      {
+        nonRetired: p.non_retired_mailboxes,
+        atRisk: p.at_risk_mailboxes,
+        listed: p.listed_domains,
+      },
+    ])
+  )
 
   const liveTotals = todayLive.reduce(
     (acc, r) => ({
@@ -136,10 +150,17 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
       </div>
       </div>
 
-      {/* Client Summary Grid */}
+      {/* Client Summary Grid + portfolio infra roll-up (PORT-2/3) */}
       <div>
         <h2 className="mb-3 text-lg font-semibold text-foreground">Clients</h2>
-        <ClientSummaryGrid summaries={summaries} periodDays={days} />
+        <div className="mb-3">
+          <PortfolioHealthStrip rows={portfolio} />
+        </div>
+        <ClientSummaryGrid
+          summaries={summaries}
+          periodDays={days}
+          infraByClient={infraByClient}
+        />
       </div>
 
       {/* Daily Send Target Chart + Sync Status */}

@@ -55,6 +55,18 @@ test("client summary grid links to client pages", async ({ page }) => {
   await expect(page.locator('a[href^="/clients/"]').first()).toBeVisible()
 })
 
+test("portfolio infra roll-up renders (PORT-2/3)", async ({ page }) => {
+  await expect(
+    page.getByText("Infrastructure across clients").first()
+  ).toBeVisible()
+  await expect(page.getByText(/mailboxes in play/).first()).toBeVisible()
+  await expect(page.getByText(/at-risk/).first()).toBeVisible()
+  await expect(page.getByText(/blacklisted domains/).first()).toBeVisible()
+  await expect(page.getByText(/open alerts/).first()).toBeVisible()
+  // Per-client infra line on the cards
+  await expect(page.getByText(/\d+ boxes/).first()).toBeVisible()
+})
+
 test("time range filter switches without breaking", async ({ page }) => {
   await page.getByRole("button", { name: "30 Days" }).click()
   await page.waitForURL(/range=30d/, { timeout: 30_000 })

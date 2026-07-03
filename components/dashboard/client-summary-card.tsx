@@ -50,14 +50,22 @@ const STATUS_CONFIG: Record<HealthStatus, { label: string; text: string; bg: str
   },
 }
 
+export interface ClientInfraBadge {
+  nonRetired: number
+  atRisk: number
+  listed: number
+}
+
 interface ClientSummaryCardProps {
   config: ClientConfig
   latest: ClientSnapshot | null
   alertCount: number
   periodDays?: number
+  /** Infra roll-up from vw_cockpit_portfolio_health (PORT-2). */
+  infra?: ClientInfraBadge
 }
 
-export function ClientSummaryCard({ config, latest, alertCount, periodDays = 1 }: ClientSummaryCardProps) {
+export function ClientSummaryCard({ config, latest, alertCount, periodDays = 1, infra }: ClientSummaryCardProps) {
   const status = computeHealthStatus(config, latest, alertCount)
   const statusCfg = STATUS_CONFIG[status]
 
@@ -159,6 +167,33 @@ export function ClientSummaryCard({ config, latest, alertCount, periodDays = 1 }
             </div>
           ) : (
             <div className="text-xs text-muted-foreground text-center py-1">No runway data</div>
+          )}
+
+          {/* Infra health line (PORT-2: perf + infra on one screen) */}
+          {infra && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-t pt-2 text-xs text-muted-foreground">
+              <span className="tabular-nums">
+                {infra.nonRetired.toLocaleString()} boxes
+              </span>
+              <span
+                className={cn(
+                  "tabular-nums",
+                  infra.atRisk > 0 &&
+                    "font-medium text-amber-600 dark:text-amber-400"
+                )}
+              >
+                {infra.atRisk} at-risk
+              </span>
+              <span
+                className={cn(
+                  "tabular-nums",
+                  infra.listed > 0 &&
+                    "font-semibold text-rose-600 dark:text-rose-400"
+                )}
+              >
+                {infra.listed} blacklisted
+              </span>
+            </div>
           )}
 
           {/* Bottom row: reply rate + alerts */}

@@ -16,6 +16,8 @@ test("overview tab renders header, live strip and KPI grid", async ({
     timeout: 60_000,
   })
   await expect(page.getByText("Interested Replies").first()).toBeVisible()
+  // Recipient-inbox performance panel (from the send-split fill)
+  await expect(page.getByText("By recipient inbox").first()).toBeVisible()
   for (const tab of [
     "Overview",
     "Campaigns",
@@ -44,6 +46,16 @@ test("mailboxes tab renders all lifecycle groups (resting-crash regression)", as
   // Step-2 cards (INFRA-4 client scope + HEALTH-3)
   await expect(page.getByText("Blacklist Status").first()).toBeVisible()
   await expect(page.getByText("Orders & Spend").first()).toBeVisible()
+  // HEALTH-4 history card — building state until 7 snapshots, then the chart
+  await expect(
+    page.getByText("Lifecycle & Health History").first()
+  ).toBeVisible()
+  await expect(
+    page
+      .getByText(/History building/)
+      .or(page.locator("svg.recharts-surface"))
+      .first()
+  ).toBeVisible()
 })
 
 test("campaigns tab shows lifetime stats with sync label", async ({
