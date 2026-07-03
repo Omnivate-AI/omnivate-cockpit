@@ -141,14 +141,15 @@ export function SyncStatusWidget() {
     Date.now() - new Date(syncTime).getTime() >
       SYNC_OVERDUE_HOURS * 3_600_000
 
+  // sp_sync_runs uses "success"/"failed"/"running"
   const syncBadge: { label: string; variant: BadgeVariant } | undefined =
     !latestRun
       ? undefined
-      : latestRun.status === "failed"
+      : ["failed", "error"].includes(latestRun.status)
         ? { label: "Failed", variant: "failed" }
         : syncOverdue
           ? { label: "Overdue", variant: "overdue" }
-          : latestRun.status === "completed"
+          : ["success", "completed"].includes(latestRun.status)
             ? { label: "Completed", variant: "ok" }
             : { label: latestRun.status, variant: "unknown" }
 
