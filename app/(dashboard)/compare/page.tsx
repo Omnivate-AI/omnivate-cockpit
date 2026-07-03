@@ -4,6 +4,7 @@ import { getClientComparisonData } from "@/lib/queries/analytics"
 import { ClientSelector } from "@/components/compare/client-selector"
 import { ComparisonCharts } from "@/components/compare/comparison-charts"
 import { EmptyState } from "@/components/shared/empty-state"
+import { SectionFreshness } from "@/components/shared/section-freshness"
 
 export default async function ComparePage({
   searchParams,
@@ -33,6 +34,7 @@ export default async function ComparePage({
         <p className="text-sm text-muted-foreground mt-1">
           Compare 2-3 clients side by side across key metrics
         </p>
+        <SectionFreshness className="mt-1.5" />
       </div>
 
       {/* Client multi-select */}

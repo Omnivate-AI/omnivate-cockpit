@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button"
 import { BarChart3 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { MiniSparkline } from "@/components/campaigns/mini-sparkline"
-import { FreshnessBadge } from "@/components/shared/freshness-badge"
+import { DataAsOf } from "@/components/shared/data-as-of"
 import type { ClientCampaign } from "@/lib/queries/campaigns"
 
 type TypeFilter = "all" | "primary" | "subsequence"
@@ -149,7 +149,7 @@ function LeadStatusBar({ snap }: { snap: { leads_not_started: number; leads_in_p
         <TooltipContent side="bottom" className="text-xs">
           <div className="space-y-0.5">
             <div className="flex items-center gap-1.5">
-              <span className="inline-block h-2 w-2 rounded-full bg-stone-300" />
+              <span className="inline-block h-2 w-2 rounded-full bg-stone-300 dark:bg-stone-600" />
               Not Started: {snap.leads_not_started.toLocaleString()}
             </div>
             <div className="flex items-center gap-1.5">
@@ -481,7 +481,7 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
         </Select>
 
         <div className="ml-auto flex items-center gap-3">
-          <FreshnessBadge date={latestCampaignDate} />
+          <DataAsOf factDate={latestCampaignDate} />
           <span className="text-xs text-muted-foreground">
             {filtered.length} campaign{filtered.length !== 1 ? "s" : ""}
           </span>
@@ -601,8 +601,11 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
 
       {/* Empty state */}
       {filtered.length === 0 && (
-        <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
-          No campaigns found
+        <div className="flex h-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-center">
+          <p className="text-sm font-medium">No campaigns match these filters</p>
+          <p className="text-xs text-muted-foreground">
+            Try a different type or period.
+          </p>
         </div>
       )}
 

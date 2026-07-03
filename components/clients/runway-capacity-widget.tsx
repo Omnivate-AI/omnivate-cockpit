@@ -110,13 +110,13 @@ export function RunwayCapacityWidget({ snapshot, config }: RunwayCapacityWidgetP
         {(showUploadCallout || showEnrichmentCallout) && (
           <div className="space-y-2">
             {showUploadCallout && (
-              <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>Campaign runway critically low — upload leads soon</span>
               </div>
             )}
             {showEnrichmentCallout && (
-              <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>Pipeline runway critically low — run enrichment</span>
               </div>

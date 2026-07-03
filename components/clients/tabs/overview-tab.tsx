@@ -17,7 +17,7 @@ import { getClientAlerts, resolveClientSlugs } from "@/lib/queries/clients"
 import { getClientTotalReplies } from "@/lib/queries/campaigns"
 import { detectAnomalies } from "@/lib/scoring/anomaly-detection"
 import { formatDistanceToNow } from "date-fns"
-import { FreshnessBadge } from "@/components/shared/freshness-badge"
+import { SectionFreshness } from "@/components/shared/section-freshness"
 import type { ClientSnapshot } from "@/types/analytics"
 import type { ClientConfig } from "@/types/analytics"
 
@@ -96,7 +96,7 @@ export async function OverviewTab({
 
       {/* KPI Cards */}
       <div className="flex justify-end mb-1">
-        <FreshnessBadge date={latestSnapshot?.snapshot_date} />
+        <SectionFreshness factDate={latestSnapshot?.snapshot_date} />
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard

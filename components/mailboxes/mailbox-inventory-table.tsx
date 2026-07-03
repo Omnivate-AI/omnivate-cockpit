@@ -25,9 +25,11 @@ import type { ClientMailboxRow } from "@/lib/queries/mailboxes"
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "All Statuses" },
   { value: "active", label: "Active" },
+  { value: "resting", label: "Resting" },
   { value: "ramping", label: "Ramping" },
   { value: "warming", label: "Warming" },
   { value: "reserve", label: "Reserve" },
+  { value: "parked", label: "Parked" },
   { value: "burnt", label: "Burnt (needs drain)" },
   { value: "draining", label: "Draining" },
   { value: "retired", label: "Retired" },
@@ -67,6 +69,15 @@ const GROUPS: MailboxGroup[] = [
       m.lifecycle_status === "active" &&
       (m.warmup_health_pct == null || m.warmup_health_pct >= HEALTH_THRESHOLDS.healthy),
     sort: (a, b) => (a.warmup_health_pct ?? 100) - (b.warmup_health_pct ?? 100),
+  },
+  {
+    key: "resting",
+    label: "Resting",
+    borderColor: "border-l-violet-500",
+    badgeColor: "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300",
+    defaultExpanded: false,
+    match: (m) => m.lifecycle_status === "resting",
+    sort: (a, b) => a.email.localeCompare(b.email),
   },
   {
     key: "ramping",
@@ -120,6 +131,17 @@ const GROUPS: MailboxGroup[] = [
     badgeColor: "bg-indigo-100 text-indigo-700",
     defaultExpanded: false,
     match: (m) => m.lifecycle_status === "master" || m.is_master_inbox,
+    sort: (a, b) => a.email.localeCompare(b.email),
+  },
+  // Catch-all so an unrecognized lifecycle can never crash the tab
+  // (sp_* vocabulary: active/resting/reserve/warming/parked/burnt/retired/master).
+  {
+    key: "other",
+    label: "Other",
+    borderColor: "border-l-stone-400",
+    badgeColor: "bg-stone-100 text-stone-600 dark:bg-stone-800/60 dark:text-stone-300",
+    defaultExpanded: false,
+    match: () => true,
     sort: (a, b) => a.email.localeCompare(b.email),
   },
 ]

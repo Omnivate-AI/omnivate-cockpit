@@ -1,9 +1,21 @@
-import { FileText, Copy, AlertTriangle, Mail, MessageSquare, Percent } from "lucide-react"
+import { FileText, AlertTriangle, Mail, MessageSquare, Percent, CheckCircle2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getDigestData } from "@/lib/queries/analytics"
 import { getTopAlerts } from "@/lib/queries/alerts"
 import { getRecentSpamRisks } from "@/lib/queries/campaigns"
 import { DigestCopyButton } from "@/components/digest/digest-copy-button"
+import { SectionFreshness } from "@/components/shared/section-freshness"
+
+function fmtDigestDate(date: string): string {
+  const [y, m, d] = date.slice(0, 10).split("-").map(Number)
+  if (!y || !m || !d) return date
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", {
+    timeZone: "UTC",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  })
+}
 
 export default async function DigestPage() {
   const [digest, alerts, spamRisks] = await Promise.all([
@@ -12,13 +24,15 @@ export default async function DigestPage() {
     getRecentSpamRisks(7, 5),
   ])
 
+  const digestDateLabel = fmtDigestDate(digest.date)
+
   // Build plain-text digest for clipboard
   const lines: string[] = []
-  lines.push(`Daily Digest — ${digest.date}`)
+  lines.push(`Daily Digest — ${digestDateLabel} (${digest.date})`)
   lines.push("=".repeat(40))
   lines.push("")
   lines.push("SUMMARY")
-  lines.push(`  Emails Sent Yesterday: ${digest.totalSent.toLocaleString()}`)
+  lines.push(`  Emails Sent: ${digest.totalSent.toLocaleString()}`)
   lines.push(`  Interested Replies: ${digest.totalInterested.toLocaleString()}`)
   lines.push(`  Total Replies: ${digest.totalReplies.toLocaleString()}`)
   lines.push(
@@ -26,45 +40,51 @@ export default async function DigestPage() {
   )
   lines.push("")
   lines.push("PER CLIENT")
+  if (digest.clients.length === 0) {
+    lines.push("  No active clients reported for this date.")
+  }
   for (const c of digest.clients) {
     lines.push(
       `  ${c.displayName}: ${c.emailsSent.toLocaleString()} sent, ${c.interestedReplies} interested, ${c.totalReplies} replies, ${c.replyRate > 0 ? c.replyRate.toFixed(2) + "%" : "N/A"} reply rate`
     )
   }
 
-  if (spamRisks.length > 0) {
-    lines.push("")
-    lines.push("DELIVERABILITY ISSUES")
-    for (const r of spamRisks) {
-      lines.push(
-        `  ${r.campaign_name} (${r.client}): ${(r.spam_pct ?? 0).toFixed(1)}% spam — tested ${r.test_date}`
-      )
-    }
+  lines.push("")
+  lines.push("DELIVERABILITY ISSUES")
+  if (spamRisks.length === 0) {
+    lines.push("  None — recent placement tests are clean.")
+  }
+  for (const r of spamRisks) {
+    lines.push(
+      `  ${r.campaign_name} (${r.client}): ${(r.spam_pct ?? 0).toFixed(1)}% spam — tested ${r.test_date}`
+    )
   }
 
-  if (alerts.length > 0) {
-    lines.push("")
-    lines.push("ACTIVE ALERTS")
-    for (const a of alerts) {
-      lines.push(
-        `  [${a.severity.toUpperCase()}] ${a.title} — ${a.client} (${a.domain_name})`
-      )
-    }
+  lines.push("")
+  lines.push("ACTIVE ALERTS")
+  if (alerts.length === 0) {
+    lines.push("  None — no open infrastructure alerts.")
+  }
+  for (const a of alerts) {
+    lines.push(
+      `  [${a.severity.toUpperCase()}] ${a.title} — ${a.client} (${a.domain_name})`
+    )
   }
 
   const plainText = lines.join("\n")
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
             <FileText className="h-6 w-6" />
             Daily Digest
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Summary for {digest.date}
+            Summary for {digestDateLabel}
           </p>
+          <SectionFreshness live className="mt-1.5" />
         </div>
         <DigestCopyButton text={plainText} />
       </div>
@@ -78,7 +98,7 @@ export default async function DigestPage() {
                 <Mail className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Emails Sent Yesterday</p>
+                <p className="text-sm text-muted-foreground">Emails Sent</p>
                 <p className="text-2xl font-semibold">{digest.totalSent.toLocaleString()}</p>
               </div>
             </div>
@@ -133,12 +153,17 @@ export default async function DigestPage() {
           <CardTitle className="text-lg">Per Client Breakdown</CardTitle>
         </CardHeader>
         <CardContent>
+          {digest.clients.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No active clients reported for this date.
+            </p>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
                   <th className="pb-2 pr-4 font-medium">Client</th>
-                  <th className="pb-2 pr-4 font-medium text-right">Sent Yesterday</th>
+                  <th className="pb-2 pr-4 font-medium text-right">Sent</th>
                   <th className="pb-2 pr-4 font-medium text-right">Interested</th>
                   <th className="pb-2 pr-4 font-medium text-right">Total Replies</th>
                   <th className="pb-2 font-medium text-right">Reply Rate</th>
@@ -165,11 +190,24 @@ export default async function DigestPage() {
               </tbody>
             </table>
           </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Deliverability Issues */}
-      {spamRisks.length > 0 && (
+      {/* Deliverability Issues — explicit all-clear when empty */}
+      {spamRisks.length === 0 ? (
+        <Card>
+          <CardContent className="flex items-center gap-3 py-4">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
+            <div>
+              <p className="text-sm font-medium">No deliverability issues</p>
+              <p className="text-xs text-muted-foreground">
+                Recent placement tests are clean.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
         <Card className="border-amber-200 dark:border-amber-800">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -206,8 +244,20 @@ export default async function DigestPage() {
         </Card>
       )}
 
-      {/* Active Alerts */}
-      {alerts.length > 0 && (
+      {/* Active Alerts — explicit all-clear when empty */}
+      {alerts.length === 0 ? (
+        <Card>
+          <CardContent className="flex items-center gap-3 py-4">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
+            <div>
+              <p className="text-sm font-medium">No active alerts</p>
+              <p className="text-xs text-muted-foreground">
+                No open infrastructure alerts right now.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Active Alerts</CardTitle>

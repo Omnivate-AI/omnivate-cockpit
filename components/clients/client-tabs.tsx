@@ -67,13 +67,16 @@ export function ClientTabs({
 
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange}>
-      <TabsList>
-        {TAB_CONFIG.map((tab) => (
-          <TabsTrigger key={tab.value} value={tab.value}>
-            {tab.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
+      {/* Scrollable on narrow viewports so every tab stays reachable (NFR-4) */}
+      <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
+        <TabsList className="w-max">
+          {TAB_CONFIG.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </div>
       {TAB_CONFIG.map((tab) => (
         <TabsContent key={tab.value} value={tab.value} className="tab-fade-in">
           {tabContent[tab.value]}

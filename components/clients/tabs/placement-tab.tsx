@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { TestTube2, ChevronDown, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { FreshnessBadge } from "@/components/shared/freshness-badge"
+import { DataAsOf } from "@/components/shared/data-as-of"
 import type { PlacementTestResult } from "@/lib/queries/campaigns"
 import { PlacementTrendChart } from "./placement-trend-chart"
 
@@ -61,7 +61,11 @@ export function PlacementTab({ results }: PlacementTabProps) {
   return (
     <div className="space-y-6">
       <div className="flex justify-end mb-1">
-        <FreshnessBadge date={latestTestDate} />
+        <DataAsOf
+          prefix="Latest placement test"
+          factDate={latestTestDate}
+          warnWhenStale={false}
+        />
       </div>
       <div className="rounded-md border p-4">
         <h3 className="text-sm font-medium mb-3">Inbox Placement Trend (Last 30 Days)</h3>

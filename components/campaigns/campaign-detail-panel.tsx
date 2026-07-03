@@ -39,7 +39,7 @@ function formatDate(dateStr: string): string {
 }
 
 function HealthDot({ health }: { health: number | null }) {
-  if (health === null) return <span className="inline-block h-2 w-2 rounded-full bg-stone-300" />
+  if (health === null) return <span className="inline-block h-2 w-2 rounded-full bg-stone-300 dark:bg-stone-600" />
   const colors = healthColor(health)
   return <span className={cn("inline-block h-2 w-2 rounded-full", colors.bg)} />
 }

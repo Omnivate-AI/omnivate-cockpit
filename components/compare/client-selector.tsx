@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation"
 import { useCallback } from "react"
 import { cn } from "@/lib/utils"
+import { clientLabel } from "@/lib/types"
 
 const CLIENT_DOT_COLORS: Record<string, string> = {
   roosterpunk: "bg-rose-500",
@@ -67,7 +68,7 @@ export function ClientSelector({ allClients, selected }: ClientSelectorProps) {
             <span
               className={cn("h-2.5 w-2.5 rounded-full", getDotColor(client))}
             />
-            <span className="capitalize">{client}</span>
+            <span>{clientLabel(client)}</span>
             {isSelected && (
               <span className="ml-1 text-xs text-indigo-500">&#10003;</span>
             )}

@@ -11,6 +11,7 @@ import {
 } from "recharts"
 import { format } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { clientLabel } from "@/lib/types"
 import type { ComparisonDataPoint } from "@/lib/queries/analytics"
 
 // Match sidebar CLIENT_COLORS with hex values for Recharts
@@ -120,9 +121,7 @@ function ComparisonChart({
                               className="h-2 w-2 rounded-full"
                               style={{ backgroundColor: entry.color }}
                             />
-                            <span className="capitalize">
-                              {entry.dataKey as string}
-                            </span>
+                            <span>{clientLabel(entry.dataKey as string)}</span>
                           </span>
                           <span className="font-medium tabular-nums">
                             {tooltipFormatter(Number(entry.value))}
@@ -135,7 +134,7 @@ function ComparisonChart({
               />
               <Legend
                 formatter={(value: string) => (
-                  <span className="capitalize text-xs">{value}</span>
+                  <span className="text-xs">{clientLabel(value)}</span>
                 )}
               />
               {clients.map((client) => (

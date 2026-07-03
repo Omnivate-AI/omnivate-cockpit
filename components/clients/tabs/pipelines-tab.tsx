@@ -14,6 +14,7 @@ import { RunPipelineButton } from "@/components/pipelines/run-pipeline-button"
 import { PromptLibraryViewer } from "@/components/pipelines/prompt-library-viewer"
 import { PipelineRunHistory } from "@/components/pipelines/pipeline-run-history"
 import { EmptyState } from "@/components/shared/empty-state"
+import { SectionFreshness } from "@/components/shared/section-freshness"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Workflow } from "lucide-react"
@@ -155,6 +156,9 @@ export async function PipelinesTab({ clientSlug }: PipelinesTabProps) {
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <SectionFreshness mode="db" prefix="Live pipeline state" />
+      </div>
       {pipelines.map((pipeline, index) => (
         <PipelineCard
           key={pipeline.id}

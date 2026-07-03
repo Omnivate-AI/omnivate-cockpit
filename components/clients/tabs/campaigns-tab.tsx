@@ -3,6 +3,7 @@ import { CampaignPerformanceTable } from "@/components/campaigns/campaign-perfor
 import { DeliverabilityIssues } from "@/components/campaigns/deliverability-issues"
 import { Megaphone } from "lucide-react"
 import { EmptyState } from "@/components/shared/empty-state"
+import { SectionFreshness } from "@/components/shared/section-freshness"
 
 interface CampaignsTabProps {
   clientSlug: string
@@ -27,6 +28,9 @@ export async function CampaignsTab({ clientSlug }: CampaignsTabProps) {
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <SectionFreshness mode="sync" prefix="Campaign stats synced" />
+      </div>
       <DeliverabilityIssues campaigns={campaigns} placements={placements} snapshotHistory={snapshotHistory} />
       <CampaignPerformanceTable campaigns={campaigns} snapshotHistory={snapshotHistory} />
     </div>

@@ -129,7 +129,7 @@ export function OrderStatusBanner({ client }: OrderStatusBannerProps) {
       {completedOrders.map((order) => (
         <div
           key={order.id}
-          className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50/50 px-4 py-2"
+          className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/30 px-4 py-2"
         >
           <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
           <span className="text-xs text-emerald-700">
@@ -150,7 +150,7 @@ export function OrderStatusBanner({ client }: OrderStatusBannerProps) {
           : 0
 
         return (
-          <Card key={order.id} className="border border-blue-200 bg-blue-50/50">
+          <Card key={order.id} className="border border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/30">
             <CardContent className="py-3 px-4 space-y-2">
               {/* Header */}
               <div className="flex items-center justify-between">
@@ -177,7 +177,7 @@ export function OrderStatusBanner({ client }: OrderStatusBannerProps) {
               {prov && (
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 rounded-full bg-blue-100 overflow-hidden">
+                    <div className="flex-1 h-2 rounded-full bg-blue-100 dark:bg-blue-950/60 overflow-hidden">
                       <div
                         className="h-full rounded-full bg-blue-500 transition-all duration-500"
                         style={{ width: `${progressPct}%` }}
@@ -215,7 +215,7 @@ export function OrderStatusBanner({ client }: OrderStatusBannerProps) {
               {!prov && (
                 <Badge
                   variant="secondary"
-                  className="gap-1 bg-blue-100 text-blue-700 hover:bg-blue-100"
+                  className="gap-1 bg-blue-100 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-950/50"
                 >
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Checking provisioning status...

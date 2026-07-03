@@ -11,7 +11,7 @@ import { AlertsBanner } from "@/components/dashboard/alerts-banner"
 import { SpamRiskBanner } from "@/components/dashboard/spam-risk-banner"
 import { SendTargetChart } from "@/components/dashboard/send-target-chart"
 import { SyncStatusWidget } from "@/components/dashboard/sync-status-widget"
-import { FreshnessBadge } from "@/components/shared/freshness-badge"
+import { SectionFreshness } from "@/components/shared/section-freshness"
 import { TimeRangeFilter } from "@/components/dashboard/time-range-filter"
 import { parseRangeDays } from "@/lib/range-utils"
 
@@ -66,6 +66,7 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
           <p className="mt-1 text-sm text-muted-foreground">
             Overview of all clients and campaigns
           </p>
+          <SectionFreshness live className="mt-1.5" />
         </div>
         <Suspense fallback={null}>
           <TimeRangeFilter />
@@ -89,7 +90,7 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
       {/* KPI Cards with gradient background */}
       <div className="rounded-2xl bg-gradient-to-br from-stone-50 via-white to-stone-100 dark:from-stone-900/50 dark:via-background dark:to-stone-900/30 p-3 sm:p-6 -mx-1 sm:-mx-2">
       <div className="mb-2 flex justify-end">
-        <FreshnessBadge date={kpis.latestSnapshotDate} />
+        <SectionFreshness factDate={kpis.latestSnapshotDate} />
       </div>
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-6">
         <MetricCard

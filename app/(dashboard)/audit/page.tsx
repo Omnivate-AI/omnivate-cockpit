@@ -1,6 +1,7 @@
 import { getAuditLog, type AuditLogFilters } from "@/lib/queries"
 import { AuditFilters } from "@/components/audit/audit-filters"
 import { AuditTable } from "@/components/audit/audit-table"
+import { SectionFreshness } from "@/components/shared/section-freshness"
 import { CsvExport } from "@/components/audit/csv-export"
 import { Pagination } from "@/components/shared/pagination"
 
@@ -32,12 +33,17 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Audit Log</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Track all domain actions and operations
           </p>
+          <SectionFreshness
+            mode="db"
+            prefix="Live action log"
+            className="mt-1.5"
+          />
         </div>
         <CsvExport />
       </div>

@@ -12,6 +12,7 @@ import { LifecycleBreakdown } from "@/components/mailboxes/lifecycle-breakdown"
 import { MasterInboxCard } from "@/components/mailboxes/master-inbox-card"
 import { DomainPoolWrapper } from "@/components/mailboxes/domain-pool-wrapper"
 import { EmptyState } from "@/components/shared/empty-state"
+import { SectionFreshness } from "@/components/shared/section-freshness"
 import { Card, CardContent } from "@/components/ui/card"
 import { Inbox } from "lucide-react"
 
@@ -43,6 +44,10 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <SectionFreshness mode="sync" prefix="Mailbox mirror synced" />
+      </div>
+
       {/* HERO: 3 capacity KPI cards */}
       <CapacityKPICards data={capacity} />
 

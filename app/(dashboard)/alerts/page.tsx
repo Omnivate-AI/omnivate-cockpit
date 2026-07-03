@@ -8,6 +8,7 @@ import {
 } from "@/lib/queries"
 import { AlertFilters } from "@/components/alerts/alert-filters"
 import { AlertsTable } from "@/components/alerts/alerts-table"
+import { SectionFreshness } from "@/components/shared/section-freshness"
 import { Pagination } from "@/components/shared/pagination"
 import { MetricCard } from "@/components/shared/metric-card"
 
@@ -67,6 +68,7 @@ export default async function AlertsPage({ searchParams }: AlertsPageProps) {
         <p className="mt-1 text-sm text-muted-foreground">
           Monitor and manage deliverability alerts across your infrastructure
         </p>
+        <SectionFreshness mode="db" prefix="Live alerts" className="mt-1.5" />
       </div>
 
       {/* Summary Cards */}

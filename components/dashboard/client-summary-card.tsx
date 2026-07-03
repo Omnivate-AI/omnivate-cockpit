@@ -28,10 +28,26 @@ export function computeHealthStatus(
 }
 
 const STATUS_CONFIG: Record<HealthStatus, { label: string; text: string; bg: string }> = {
-  healthy: { label: "Healthy", text: "text-emerald-700", bg: "bg-emerald-50" },
-  warning: { label: "Warning", text: "text-amber-700", bg: "bg-amber-50" },
-  critical: { label: "Critical", text: "text-rose-700", bg: "bg-rose-50" },
-  "no-data": { label: "No Data", text: "text-gray-500", bg: "bg-gray-100" },
+  healthy: {
+    label: "Healthy",
+    text: "text-emerald-700 dark:text-emerald-300",
+    bg: "bg-emerald-50 dark:bg-emerald-950/50",
+  },
+  warning: {
+    label: "Warning",
+    text: "text-amber-700 dark:text-amber-300",
+    bg: "bg-amber-50 dark:bg-amber-950/50",
+  },
+  critical: {
+    label: "Critical",
+    text: "text-rose-700 dark:text-rose-300",
+    bg: "bg-rose-50 dark:bg-rose-950/50",
+  },
+  "no-data": {
+    label: "No Data",
+    text: "text-gray-500 dark:text-gray-400",
+    bg: "bg-gray-100 dark:bg-gray-800/50",
+  },
 }
 
 interface ClientSummaryCardProps {
