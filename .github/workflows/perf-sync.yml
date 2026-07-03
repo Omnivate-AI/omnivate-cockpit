@@ -1,11 +1,5 @@
 # PORT-1: cloud-callable smartlead-perf sync.
 #
-# ⚠ TEMPLATE — this file must live at .github/workflows/perf-sync.yml to be
-# active. It ships under docs/ because this dev environment's GitHub
-# credential cannot push workflow files. To activate: on github.com →
-# Add file → create .github/workflows/perf-sync.yml → paste this content
-# (minus this notice) → commit. One minute, one time.
-#
 # The daily sync normally runs as a LOCAL scheduled task on Amzat's machine
 # (machine-bound — the known routine-skipping risk). This workflow makes the
 # same sync callable in the cloud: the cockpit's Refresh button dispatches it
