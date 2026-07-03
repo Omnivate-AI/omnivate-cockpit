@@ -12,6 +12,7 @@ import {
   GitCompareArrows,
   FileText,
   RefreshCw,
+  CreditCard,
 } from "lucide-react"
 import {
   Dialog,
@@ -108,6 +109,14 @@ export function CommandPalette({ clients }: CommandPaletteProps) {
         icon: FileText,
         action: () => navigate("/digest"),
         keywords: ["digest", "summary", "report"],
+      },
+      {
+        id: "nav-orders",
+        label: "Orders & Spend",
+        category: "Navigation",
+        icon: CreditCard,
+        action: () => navigate("/orders"),
+        keywords: ["orders", "spend", "cost", "inboxkit", "billing"],
       },
     ]
 

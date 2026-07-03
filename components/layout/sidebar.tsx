@@ -12,6 +12,7 @@ import {
   Plus,
   GitCompareArrows,
   FileText,
+  CreditCard,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
@@ -56,6 +57,7 @@ const TOP_NAV_ITEMS = [
 
 const BOTTOM_NAV_ITEMS = [
   { label: "Digest", href: "/digest", icon: FileText },
+  { label: "Orders", href: "/orders", icon: CreditCard },
   { label: "Alerts", href: "/alerts", icon: Bell },
   { label: "Audit Log", href: "/audit", icon: ScrollText },
   { label: "Settings", href: "/settings", icon: Settings },

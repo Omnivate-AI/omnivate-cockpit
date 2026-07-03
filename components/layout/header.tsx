@@ -16,6 +16,7 @@ const ROUTE_LABELS: Record<string, string> = {
   health: "Health",
   alerts: "Alerts",
   audit: "Audit Log",
+  orders: "Orders",
   settings: "Settings",
   clients: "Clients",
   onboarding: "Onboarding",

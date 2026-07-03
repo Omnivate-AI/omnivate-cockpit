@@ -8,6 +8,9 @@ import {
 import { MailboxInventoryTable } from "@/components/mailboxes/mailbox-inventory-table"
 import { MailboxHealthChart } from "@/components/mailboxes/mailbox-health-chart"
 import { CapacityKPICards } from "@/components/mailboxes/capacity-kpi-cards"
+import { BlacklistStatusCard } from "@/components/mailboxes/blacklist-status-card"
+import { ClientOrdersCard } from "@/components/mailboxes/client-orders-card"
+import { getClientBlacklist, getClientOrders } from "@/lib/queries/orders"
 import { LifecycleBreakdown } from "@/components/mailboxes/lifecycle-breakdown"
 import { MasterInboxCard } from "@/components/mailboxes/master-inbox-card"
 import { DomainPoolWrapper } from "@/components/mailboxes/domain-pool-wrapper"
@@ -21,12 +24,14 @@ interface MailboxesTabProps {
 }
 
 export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
-  const [mailboxes, healthTrend, capacity, masterInfo, personas] = await Promise.all([
+  const [mailboxes, healthTrend, capacity, masterInfo, personas, blacklist, orders] = await Promise.all([
     getClientMailboxInventory(clientSlug),
     getClientDomainHealthTrend(clientSlug, 30),
     getClientCapacitySnapshot(clientSlug),
     getClientMasterInbox(clientSlug),
     getClientPersonas(clientSlug),
+    getClientBlacklist(clientSlug),
+    getClientOrders(clientSlug),
   ])
 
   if (mailboxes.length === 0 || !capacity) {
@@ -65,8 +70,14 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
         </CardContent>
       </Card>
 
+      {/* DNSBL blacklist state for this client's domains (HEALTH-3) */}
+      <BlacklistStatusCard summary={blacklist} />
+
       {/* Domain candidate pool — always visible for capacity expansion */}
       <DomainPoolWrapper client={clientSlug} personas={personas} />
+
+      {/* InboxKit order history + spend (INFRA-4, client scope) */}
+      <ClientOrdersCard orders={orders} />
 
       {/* Unified inventory table with domain-grouped actions */}
       <MailboxInventoryTable mailboxes={mailboxes} client={clientSlug} />
