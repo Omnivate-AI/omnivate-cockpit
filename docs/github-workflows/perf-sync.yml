@@ -1,0 +1,80 @@
+# PORT-1: cloud-callable smartlead-perf sync.
+#
+# The daily sync normally runs as a LOCAL scheduled task on Amzat's machine
+# (machine-bound — the known routine-skipping risk). This workflow makes the
+# same sync callable in the cloud: the cockpit's Refresh button dispatches it
+# via the GitHub API, and it can also be run manually from the Actions tab.
+#
+# It lives in the cockpit repo (not the plugin repo) because this repo is the
+# deploy surface the cockpit controls; the plugin source is checked out
+# read-only via a fine-grained PAT. Nothing in the plugin repo changes.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   PERF_PLUGIN_REPO_TOKEN   fine-grained PAT, read-only "Contents" access to
+#                            Omnivate-AI/smartlead-perf-plugin
+#   SMARTLEAD_API_KEY        same value as the local plugin .env.local
+#   SUPABASE_URL             https://uivgowblojtyiobhgjlv.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY
+#   SLACK_BOT_TOKEN          Smartlead Perf Bot token
+#   SLACK_CHANNEL_ID_TEST    quiet channel for manual refresh runs
+#                            (#perf-test-amzat = C0B4JS55BL1)
+#   SLACK_CHANNEL_ID_PROD    the real summary channel (only used when a run
+#                            is dispatched with slack_target=prod)
+
+name: perf-sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (writes only the sync_runs row)"
+        type: boolean
+        default: false
+      slack_target:
+        description: "Where the sync posts its summary"
+        type: choice
+        options: [test, prod]
+        default: test
+  # Optional midday cloud run as a backup to the local morning task.
+  # Deliberately OFF until Omar approves the second daily Slack summary —
+  # uncomment to enable (posts to the PROD channel):
+  # schedule:
+  #   - cron: "30 12 * * 1-5"
+
+concurrency:
+  group: perf-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out smartlead-perf-plugin source
+        uses: actions/checkout@v4
+        with:
+          repository: Omnivate-AI/smartlead-perf-plugin
+          token: ${{ secrets.PERF_PLUGIN_REPO_TOKEN }}
+          ref: main
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: plugins/smartlead-perf-plugin/package-lock.json
+
+      - name: Install dependencies
+        working-directory: plugins/smartlead-perf-plugin
+        run: npm ci
+
+      - name: Run sync
+        working-directory: plugins/smartlead-perf-plugin
+        env:
+          SMARTLEAD_API_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ ((github.event_name == 'schedule' || github.event.inputs.slack_target == 'prod') && secrets.SLACK_CHANNEL_ID_PROD) || secrets.SLACK_CHANNEL_ID_TEST }}
+          DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
+        run: npm run sync
