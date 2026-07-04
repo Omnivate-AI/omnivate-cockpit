@@ -19,3 +19,26 @@ test("alerts page renders summary, filters and table", async ({ page }) => {
     page.locator("table tbody tr").first().or(page.getByText(/no .*alerts/i).first())
   ).toBeVisible()
 })
+
+test("alert rows expand into a full-context detail (ALERT-3)", async ({
+  page,
+}) => {
+  await page.goto("/alerts")
+  await expect(page.getByRole("heading", { name: "Alerts" })).toBeVisible({
+    timeout: 60_000,
+  })
+  const firstRow = page.locator("table tbody tr").first()
+  const hasRows = await firstRow
+    .locator("td")
+    .count()
+    .then((n) => n > 1)
+    .catch(() => false)
+  test.skip(!hasRows, "no alerts present to expand")
+
+  await firstRow.click()
+  // Detail panel fields
+  await expect(page.getByText("Type", { exact: true }).first()).toBeVisible()
+  await expect(
+    page.getByText("Created", { exact: true }).first()
+  ).toBeVisible()
+})

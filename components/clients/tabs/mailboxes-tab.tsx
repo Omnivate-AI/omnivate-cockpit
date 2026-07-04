@@ -11,8 +11,10 @@ import { CapacityKPICards } from "@/components/mailboxes/capacity-kpi-cards"
 import { BlacklistStatusCard } from "@/components/mailboxes/blacklist-status-card"
 import { ClientOrdersCard } from "@/components/mailboxes/client-orders-card"
 import { LifecycleHistoryCard } from "@/components/mailboxes/lifecycle-history-card"
+import { DomainsCard } from "@/components/mailboxes/domains-card"
 import { getClientBlacklist, getClientOrders } from "@/lib/queries/orders"
 import { getClientLifecycleHistory } from "@/lib/queries/portfolio"
+import { getClientDomains } from "@/lib/queries/clients"
 import { LifecycleBreakdown } from "@/components/mailboxes/lifecycle-breakdown"
 import { MasterInboxCard } from "@/components/mailboxes/master-inbox-card"
 import { DomainPoolWrapper } from "@/components/mailboxes/domain-pool-wrapper"
@@ -26,7 +28,7 @@ interface MailboxesTabProps {
 }
 
 export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
-  const [mailboxes, healthTrend, capacity, masterInfo, personas, blacklist, orders, lifecycleHistory] = await Promise.all([
+  const [mailboxes, healthTrend, capacity, masterInfo, personas, blacklist, orders, lifecycleHistory, domains] = await Promise.all([
     getClientMailboxInventory(clientSlug),
     getClientDomainHealthTrend(clientSlug, 30),
     getClientCapacitySnapshot(clientSlug),
@@ -35,7 +37,19 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
     getClientBlacklist(clientSlug),
     getClientOrders(clientSlug),
     getClientLifecycleHistory(clientSlug, 30),
+    getClientDomains(clientSlug),
   ])
+
+  const blacklistByDomain = Object.fromEntries(
+    blacklist.rows.map((r) => [r.domain, r.status])
+  )
+  const masterDomains = Array.from(
+    new Set(
+      mailboxes
+        .filter((m) => m.is_master_inbox && m.domain_name)
+        .map((m) => m.domain_name)
+    )
+  )
 
   if (mailboxes.length === 0 || !capacity) {
     return (
@@ -75,6 +89,13 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
 
       {/* Lifecycle/health history from daily snapshots (HEALTH-4) */}
       <LifecycleHistoryCard history={lifecycleHistory} />
+
+      {/* Per-domain listing: counts, lifecycle, catch-all, master (INFRA-3) */}
+      <DomainsCard
+        domains={domains}
+        blacklistByDomain={blacklistByDomain}
+        masterDomains={masterDomains}
+      />
 
       {/* DNSBL blacklist state for this client's domains (HEALTH-3) */}
       <BlacklistStatusCard summary={blacklist} />

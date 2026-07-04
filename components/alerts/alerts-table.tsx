@@ -1,11 +1,133 @@
 "use client"
 
-import { useState } from "react"
-import { Check, Eye, ChevronDown, ChevronRight } from "lucide-react"
+import { Fragment, useState } from "react"
+import Link from "next/link"
+import { Check, Eye, ChevronDown, ChevronRight, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { AlertWithDomain } from "@/lib/queries"
+
+/** ALERT-3: full-context detail row, shared by both tables. */
+function AlertDetailRow({
+  alert,
+  colSpan,
+}: {
+  alert: AlertWithDomain
+  colSpan: number
+}) {
+  const actions = normalizeProposedActions(alert.proposed_actions)
+  return (
+    <tr className="border-b bg-muted/20 last:border-0">
+      <td colSpan={colSpan} className="px-6 py-4">
+        <div className="grid gap-4 text-sm md:grid-cols-2">
+          <div className="space-y-2">
+            <DetailField label="Type">
+              <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+                {alert.alert_type}
+              </span>
+            </DetailField>
+            <DetailField label="Description">
+              <span className="whitespace-pre-wrap">
+                {alert.description ?? "—"}
+              </span>
+            </DetailField>
+            {actions.length > 0 && (
+              <DetailField label="Proposed actions">
+                <ul className="list-disc space-y-0.5 pl-4">
+                  {actions.map((a, i) => (
+                    <li key={i} className="text-muted-foreground">
+                      {a}
+                    </li>
+                  ))}
+                </ul>
+              </DetailField>
+            )}
+          </div>
+          <div className="space-y-2">
+            <DetailField label="Domain">
+              {alert.domain_name && alert.domain_name !== "—" ? (
+                <Link
+                  href={`/clients/${alert.client}?tab=mailboxes`}
+                  className="inline-flex items-center gap-1 font-medium hover:underline"
+                >
+                  {alert.domain_name}
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
+              ) : (
+                "—"
+              )}
+            </DetailField>
+            <DetailField label="Created">
+              {new Date(alert.created_at).toLocaleString("en-GB", {
+                timeZone: "UTC",
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}{" "}
+              UTC
+            </DetailField>
+            {alert.status === "resolved" && (
+              <>
+                <DetailField label="Resolved">
+                  {alert.resolved_at
+                    ? `${new Date(alert.resolved_at).toLocaleString("en-GB", {
+                        timeZone: "UTC",
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })} UTC`
+                    : "—"}
+                  {alert.resolved_by ? ` · by ${alert.resolved_by}` : ""}
+                </DetailField>
+                <DetailField label="Resolution note">
+                  <span className="whitespace-pre-wrap">
+                    {alert.resolution_note ?? "—"}
+                  </span>
+                </DetailField>
+              </>
+            )}
+            {alert.slack_message_ts && (
+              <DetailField label="Slack">
+                Posted to the alerts channel (ts {alert.slack_message_ts})
+              </DetailField>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function DetailField({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+      <div className="mt-0.5">{children}</div>
+    </div>
+  )
+}
+
+/** proposed_actions jsonb varies: array of strings/objects or one object. */
+function normalizeProposedActions(raw: unknown): string[] {
+  if (!raw) return []
+  const toLine = (v: unknown): string => {
+    if (typeof v === "string") return v
+    if (v && typeof v === "object") {
+      return Object.entries(v as Record<string, unknown>)
+        .map(([k, val]) => `${k}: ${String(val)}`)
+        .join(" · ")
+    }
+    return String(v)
+  }
+  return Array.isArray(raw) ? raw.map(toLine) : [toLine(raw)]
+}
 
 interface AlertsTableProps {
   unresolved: AlertWithDomain[]
@@ -48,6 +170,10 @@ export function AlertsTable({ unresolved: initialUnresolved, recentlyResolved: i
   const [resolveNotes, setResolveNotes] = useState("")
   const [showResolved, setShowResolved] = useState(false)
   const [loadingId, setLoadingId] = useState<number | null>(null)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+
+  const toggleExpand = (id: number) =>
+    setExpandedId((prev) => (prev === id ? null : id))
 
   async function handleAcknowledge(alert: AlertWithDomain) {
     setLoadingId(alert.id)
@@ -102,9 +228,10 @@ export function AlertsTable({ unresolved: initialUnresolved, recentlyResolved: i
     <div className="space-y-4">
       {/* Unresolved alerts table */}
       <div className="rounded-md border overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full min-w-[680px] text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
+              <th className="w-8 px-2 py-3"></th>
               <th className="px-4 py-3 text-left font-medium">Severity</th>
               <th className="px-4 py-3 text-left font-medium">Client</th>
               <th className="px-4 py-3 text-left font-medium">Title</th>
@@ -116,57 +243,79 @@ export function AlertsTable({ unresolved: initialUnresolved, recentlyResolved: i
           <tbody>
             {unresolved.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   No unresolved alerts
                 </td>
               </tr>
             ) : (
-              unresolved.map((alert) => (
-                <tr key={alert.id} className="border-b last:border-0">
-                  <td className="px-4 py-3">
-                    <SeverityBadge severity={alert.severity} />
-                  </td>
-                  <td className="px-4 py-3 capitalize text-muted-foreground">
-                    {alert.client}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{alert.title}</div>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground max-w-[250px]">
-                    {alert.description ? (
-                      <span className="line-clamp-1">{alert.description}</span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground tabular-nums whitespace-nowrap">
-                    {timeAgo(alert.created_at)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleAcknowledge(alert)}
-                        disabled={loadingId === alert.id}
-                        title="Acknowledge"
-                      >
-                        <Eye className="h-3.5 w-3.5 mr-1" />
-                        Ack
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setResolveTarget(alert)}
-                        disabled={loadingId === alert.id}
-                      >
-                        <Check className="h-3.5 w-3.5 mr-1" />
-                        Resolve
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              unresolved.map((alert) => {
+                const isExpanded = expandedId === alert.id
+                return (
+                  <Fragment key={alert.id}>
+                    <tr
+                      className={cn(
+                        "border-b cursor-pointer transition-colors hover:bg-muted/40 last:border-0",
+                        isExpanded && "bg-muted/30"
+                      )}
+                      onClick={() => toggleExpand(alert.id)}
+                    >
+                      <td className="px-2 py-3 text-muted-foreground">
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <SeverityBadge severity={alert.severity} />
+                      </td>
+                      <td className="px-4 py-3 capitalize text-muted-foreground">
+                        {alert.client}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{alert.title}</div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground max-w-[250px]">
+                        {alert.description ? (
+                          <span className="line-clamp-1">{alert.description}</span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground tabular-nums whitespace-nowrap">
+                        {timeAgo(alert.created_at)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div
+                          className="flex items-center justify-end gap-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAcknowledge(alert)}
+                            disabled={loadingId === alert.id}
+                            title="Acknowledge"
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1" />
+                            Ack
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setResolveTarget(alert)}
+                            disabled={loadingId === alert.id}
+                          >
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                            Resolve
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && <AlertDetailRow alert={alert} colSpan={7} />}
+                  </Fragment>
+                )
+              })
             )}
           </tbody>
         </table>
@@ -187,31 +336,53 @@ export function AlertsTable({ unresolved: initialUnresolved, recentlyResolved: i
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
+                    <th className="w-8 px-2 py-3"></th>
                     <th className="px-4 py-3 text-left font-medium">Severity</th>
                     <th className="px-4 py-3 text-left font-medium">Client</th>
                     <th className="px-4 py-3 text-left font-medium">Title</th>
                     <th className="px-4 py-3 text-left font-medium">Resolved</th>
-                    <th className="px-4 py-3 text-left font-medium">Notes</th>
+                    <th className="px-4 py-3 text-left font-medium">Note</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {resolved.map((alert) => (
-                    <tr key={alert.id} className="border-b last:border-0 opacity-60">
-                      <td className="px-4 py-3">
-                        <SeverityBadge severity={alert.severity} />
-                      </td>
-                      <td className="px-4 py-3 capitalize text-muted-foreground">
-                        {alert.client}
-                      </td>
-                      <td className="px-4 py-3">{alert.title}</td>
-                      <td className="px-4 py-3 text-muted-foreground tabular-nums">
-                        {alert.resolved_at ? timeAgo(alert.resolved_at) : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs">
-                        {alert.resolved_by || "—"}
-                      </td>
-                    </tr>
-                  ))}
+                  {resolved.map((alert) => {
+                    const isExpanded = expandedId === alert.id
+                    return (
+                      <Fragment key={alert.id}>
+                        <tr
+                          className={cn(
+                            "border-b cursor-pointer opacity-70 transition-colors hover:bg-muted/40 hover:opacity-100 last:border-0",
+                            isExpanded && "bg-muted/30 opacity-100"
+                          )}
+                          onClick={() => toggleExpand(alert.id)}
+                        >
+                          <td className="px-2 py-3 text-muted-foreground">
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <SeverityBadge severity={alert.severity} />
+                          </td>
+                          <td className="px-4 py-3 capitalize text-muted-foreground">
+                            {alert.client}
+                          </td>
+                          <td className="px-4 py-3">{alert.title}</td>
+                          <td className="px-4 py-3 text-muted-foreground tabular-nums">
+                            {alert.resolved_at ? timeAgo(alert.resolved_at) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs max-w-[220px]">
+                            <span className="line-clamp-1">
+                              {alert.resolution_note || "—"}
+                            </span>
+                          </td>
+                        </tr>
+                        {isExpanded && <AlertDetailRow alert={alert} colSpan={6} />}
+                      </Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

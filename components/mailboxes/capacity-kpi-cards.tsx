@@ -13,16 +13,16 @@ interface CapacityKPICardsProps {
 }
 
 const CAPACITY_STYLES = {
-  ok:      { border: "border-emerald-200",  bg: "bg-emerald-50",  text: "text-emerald-700",  badgeText: "On Target" },
-  warning: { border: "border-amber-200",    bg: "bg-amber-50",    text: "text-amber-700",    badgeText: "Near Target" },
-  deficit: { border: "border-rose-300",     bg: "bg-rose-50",     text: "text-rose-700",     badgeText: "Below Target" },
+  ok:      { border: "border-emerald-200 dark:border-emerald-900",  bg: "bg-emerald-50 dark:bg-emerald-950/40",  text: "text-emerald-700 dark:text-emerald-400",  badgeText: "On Target" },
+  warning: { border: "border-amber-200 dark:border-amber-900",    bg: "bg-amber-50 dark:bg-amber-950/40",    text: "text-amber-700 dark:text-amber-400",    badgeText: "Near Target" },
+  deficit: { border: "border-rose-300 dark:border-rose-900",     bg: "bg-rose-50 dark:bg-rose-950/40",     text: "text-rose-700 dark:text-rose-400",     badgeText: "Below Target" },
   unset:   { border: "border-dashed border-muted-foreground/30", bg: "bg-muted/20", text: "text-muted-foreground", badgeText: "Target Unset" },
 } as const
 
 const RESERVE_STYLES = {
-  ok:        { border: "border-emerald-200",  bg: "bg-emerald-50",  text: "text-emerald-700",  badgeText: "Sufficient" },
-  warning:   { border: "border-amber-200",    bg: "bg-amber-50",    text: "text-amber-700",    badgeText: "Running Low" },
-  emergency: { border: "border-rose-300",     bg: "bg-rose-50",     text: "text-rose-700",     badgeText: "EMERGENCY" },
+  ok:        { border: "border-emerald-200 dark:border-emerald-900",  bg: "bg-emerald-50 dark:bg-emerald-950/40",  text: "text-emerald-700 dark:text-emerald-400",  badgeText: "Sufficient" },
+  warning:   { border: "border-amber-200 dark:border-amber-900",    bg: "bg-amber-50 dark:bg-amber-950/40",    text: "text-amber-700 dark:text-amber-400",    badgeText: "Running Low" },
+  emergency: { border: "border-rose-300 dark:border-rose-900",     bg: "bg-rose-50 dark:bg-rose-950/40",     text: "text-rose-700 dark:text-rose-400",     badgeText: "EMERGENCY" },
   unset:     { border: "border-dashed border-muted-foreground/30", bg: "bg-muted/20", text: "text-muted-foreground", badgeText: "Target Unset" },
 } as const
 
@@ -33,8 +33,8 @@ export function CapacityKPICards({ data }: CapacityKPICardsProps) {
 
   const burnActionBadge =
     data.burnt_domain_count === 0
-      ? { border: "border-emerald-200", bg: "bg-emerald-50", text: "text-emerald-700", badgeText: "No Action" }
-      : { border: "border-rose-300", bg: "bg-rose-50", text: "text-rose-700", badgeText: `${data.burnt_domain_count} DOMAINS` }
+      ? { border: "border-emerald-200 dark:border-emerald-900", bg: "bg-emerald-50 dark:bg-emerald-950/40", text: "text-emerald-700 dark:text-emerald-400", badgeText: "No Action" }
+      : { border: "border-rose-300 dark:border-rose-900", bg: "bg-rose-50 dark:bg-rose-950/40", text: "text-rose-700 dark:text-rose-400", badgeText: `${data.burnt_domain_count} DOMAINS` }
 
   return (
     <>

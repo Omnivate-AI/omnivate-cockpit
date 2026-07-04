@@ -56,6 +56,9 @@ test("mailboxes tab renders all lifecycle groups (resting-crash regression)", as
       .or(page.locator("svg.recharts-surface"))
       .first()
   ).toBeVisible()
+  // INFRA-3 domains table + INFRA-5 rotation line
+  await expect(page.getByText(/Domains \(\d+\)/).first()).toBeVisible()
+  await expect(page.getByText("Weekly rotation:").first()).toBeVisible()
 })
 
 test("campaigns tab shows lifetime stats with sync label", async ({

@@ -59,6 +59,27 @@ export function LifecycleBreakdown({ data }: LifecycleBreakdownProps) {
             </div>
           ))}
         </div>
+
+        {/* Rotation state (INFRA-5): the pool swaps weekly between active
+            and resting; reserve depth vs target lives in the hero cards. */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t pt-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Weekly rotation:</span>
+          <span className="tabular-nums">
+            {data.active} active ↔ {data.resting} resting
+          </span>
+          {data.reserve > 0 && (
+            <span className="tabular-nums">
+              · {data.reserve} in reserve
+              {data.target_reserve_mailboxes !== null &&
+                ` (target ${data.target_reserve_mailboxes})`}
+            </span>
+          )}
+          {data.resting === 0 && data.active > 0 && (
+            <span className="font-medium text-amber-600 dark:text-amber-400">
+              · no resting pool — rotation has nowhere to swap
+            </span>
+          )}
+        </div>
       </CardContent>
     </Card>
   )

@@ -148,8 +148,14 @@ export function AuditTable({ actions }: { actions: AuditLogRow[] }) {
                     {format(new Date(action.created_at), "MMM d, yyyy h:mm a")}
                   </TableCell>
                   <TableCell>
+                    {/* /domains/[id] is a DEF-4 redirect-to-home — link to the
+                        client's mailboxes tab where domains actually live */}
                     <Link
-                      href={`/domains/${action.domain_id}`}
+                      href={
+                        action.client
+                          ? `/clients/${action.client}?tab=mailboxes`
+                          : "/audit"
+                      }
                       className="font-medium text-foreground hover:text-indigo-600 transition-colors"
                       onClick={(e) => e.stopPropagation()}
                     >
