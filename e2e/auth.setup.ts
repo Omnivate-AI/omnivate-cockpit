@@ -24,12 +24,24 @@ setup("authenticate", async ({ page }) => {
   }
 
   await page.goto("/login")
-  await page.locator("#email").fill(email)
-  await page.locator("#password").fill(password)
-  await page.getByRole("button", { name: /sign in/i }).click()
 
-  // Successful login lands on the Command Center
-  await page.waitForURL(/\/$/, { timeout: 45_000 })
+  // On a cold page (fresh deploy) the first click can land before React
+  // hydrates the form and do nothing — refill + re-click until the URL
+  // actually changes.
+  let loggedIn = false
+  for (let attempt = 0; attempt < 3 && !loggedIn; attempt++) {
+    await page.locator("#email").fill(email)
+    await page.locator("#password").fill(password)
+    await page.getByRole("button", { name: /sign in/i }).click()
+    loggedIn = await page
+      .waitForURL(/\/$/, { timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false)
+  }
+  if (!loggedIn) {
+    throw new Error("login did not navigate after 3 attempts")
+  }
+
   await expect(
     page.getByRole("heading", { name: "Command Center" })
   ).toBeVisible({ timeout: 45_000 })
