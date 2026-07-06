@@ -17,6 +17,12 @@ export interface CampaignRegistryRow {
   smartlead_campaign_id: number
   campaign_name: string
   campaign_type: "primary" | "subsequence"
+  /** primary | follow_up | referral — name heuristic + operator override
+      (vw_cockpit_campaign_class, migration 007/009). Referrals classified
+      correctly, unlike campaign_type. */
+  campaign_class?: "primary" | "follow_up" | "referral"
+  /** Operator marked this campaign finished — excluded from runway + alerts */
+  considered_done?: boolean
   is_active: boolean
   status?: string
   sequence_length?: number | null
@@ -128,18 +134,26 @@ function lifetimeSnapshot(
 // --- Functions ---
 
 export const getClientCampaigns = cache(
-  async (client: string): Promise<ClientCampaign[]> => {
+  async (
+    client: string,
+    scope: "active" | "all" = "active"
+  ): Promise<ClientCampaign[]> => {
     const supabase = createServerClient()
 
     const slugs = await resolveClientSlugs(client)
 
-    // 1. Active campaigns with lifetime stats (ACTIVE status in Smartlead)
-    const { data: campaigns } = await supabase
+    // 1. Campaigns with lifetime stats. scope="all" includes past campaigns
+    //    (paused/completed/drafted/archived) — Omar 07-06: active AND past,
+    //    with a toggle, so runs are comparable.
+    let query = supabase
       .from("vw_cockpit_campaigns")
       .select("*")
       .in("client", slugs)
-      .eq("is_active", true)
       .order("campaign_name", { ascending: true })
+    if (scope === "active") {
+      query = query.eq("is_active", true)
+    }
+    const { data: campaigns } = await query
 
     if (!campaigns || campaigns.length === 0) return []
 

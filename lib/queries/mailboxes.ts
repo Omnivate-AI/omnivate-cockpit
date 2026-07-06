@@ -428,6 +428,35 @@ export interface BurntDomainRow {
   has_pending_decision: boolean
 }
 
+// A/B weekly-rotation capacity (vw_cockpit_rotation_capacity, migration 011)
+export interface RotationCapacityRow {
+  client: string
+  group_a_boxes: number
+  group_a_capacity: number
+  group_a_active_boxes: number
+  group_b_boxes: number
+  group_b_capacity: number
+  group_b_active_boxes: number
+  pool_boxes: number
+  pool_capacity: number
+  reserve_boxes: number
+  reserve_capacity: number
+  warming_boxes: number
+  ungrouped_pool_boxes: number
+}
+
+export const getClientRotationCapacity = cache(
+  async (client: string): Promise<RotationCapacityRow | null> => {
+    const supabase = createServerClient()
+    const { data } = await supabase
+      .from("vw_cockpit_rotation_capacity")
+      .select("*")
+      .eq("client", client)
+      .maybeSingle()
+    return (data as RotationCapacityRow | null) ?? null
+  }
+)
+
 export const getClientCapacitySnapshot = cache(
   async (client: string): Promise<ClientCapacityRow | null> => {
     const supabase = createServerClient()

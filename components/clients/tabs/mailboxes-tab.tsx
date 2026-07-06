@@ -4,7 +4,9 @@ import {
   getClientCapacitySnapshot,
   getClientMasterInbox,
   getClientPersonas,
+  getClientRotationCapacity,
 } from "@/lib/queries/mailboxes"
+import { RotationCapacityCard } from "@/components/mailboxes/rotation-capacity-card"
 import { MailboxInventoryTable } from "@/components/mailboxes/mailbox-inventory-table"
 import { MailboxHealthChart } from "@/components/mailboxes/mailbox-health-chart"
 import { CapacityKPICards } from "@/components/mailboxes/capacity-kpi-cards"
@@ -28,7 +30,7 @@ interface MailboxesTabProps {
 }
 
 export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
-  const [mailboxes, healthTrend, capacity, masterInfo, personas, blacklist, orders, lifecycleHistory, domains] = await Promise.all([
+  const [mailboxes, healthTrend, capacity, masterInfo, personas, blacklist, orders, lifecycleHistory, domains, rotation] = await Promise.all([
     getClientMailboxInventory(clientSlug),
     getClientDomainHealthTrend(clientSlug, 30),
     getClientCapacitySnapshot(clientSlug),
@@ -38,6 +40,7 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
     getClientOrders(clientSlug),
     getClientLifecycleHistory(clientSlug, 30),
     getClientDomains(clientSlug),
+    getClientRotationCapacity(clientSlug),
   ])
 
   const blacklistByDomain = Object.fromEntries(
@@ -72,6 +75,10 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
 
       {/* HERO: 3 capacity KPI cards */}
       <CapacityKPICards data={capacity} />
+
+      {/* A/B rotation groups: Group A alone / Group B alone / whole pool /
+          reserve bench, each with real emails-per-day capacity (Omar 07-06) */}
+      <RotationCapacityCard data={rotation} />
 
       {/* Lifecycle breakdown + Master inbox */}
       <div className="grid gap-4 md:grid-cols-[2fr_1fr]">

@@ -360,6 +360,21 @@ function RunwayGauge({
             {detail ?? `${formatLeads(leads)} leads`}
           </p>
         </>
+      ) : leads > 0 ? (
+        // Days not computable (no capacity model for the bank yet), but the
+        // lead count itself is real — show it instead of "Not tracked"
+        <>
+          <div className="flex items-baseline gap-1">
+            <span className="text-lg font-bold tabular-nums leading-none text-foreground">
+              {formatLeads(leads)}
+            </span>
+            <span className="text-[10px] text-muted-foreground">ready</span>
+          </div>
+          <div className="mt-1.5 h-1 w-full rounded-full bg-muted" />
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            verified · not yet contacted
+          </p>
+        </>
       ) : (
         <>
           <div className="flex items-baseline gap-1">

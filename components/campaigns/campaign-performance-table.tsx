@@ -21,6 +21,7 @@ import { CampaignDetailPanel } from "@/components/campaigns/campaign-detail-pane
 import { CampaignHealthBadge } from "@/components/campaigns/campaign-health-badge"
 import { CampaignComparisonDialog } from "@/components/campaigns/campaign-comparison-dialog"
 import { CampaignActions } from "@/components/campaigns/campaign-actions"
+import { MarkDoneToggle } from "@/components/campaigns/mark-done-toggle"
 import { computeCampaignHealthScore } from "@/lib/scoring/campaign-health"
 import { computeSpamRisk } from "@/lib/scoring/spam-risk"
 import { SpamRiskBadge } from "@/components/campaigns/spam-risk-badge"
@@ -31,8 +32,38 @@ import { MiniSparkline } from "@/components/campaigns/mini-sparkline"
 import { DataAsOf } from "@/components/shared/data-as-of"
 import type { ClientCampaign } from "@/lib/queries/campaigns"
 
-type TypeFilter = "all" | "primary" | "subsequence"
+// campaign_class from vw_cockpit_campaign_class (referral-aware, unlike
+// the old primary/subsequence campaign_type)
+type TypeFilter = "all" | "primary" | "follow_up" | "referral"
 type TimeRange = "7" | "14" | "30" | "all"
+
+const CLASS_CHIP: Record<
+  string,
+  { label: string; className: string }
+> = {
+  primary: {
+    label: "Primary",
+    className: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  },
+  follow_up: {
+    label: "Follow-up",
+    className:
+      "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300",
+  },
+  referral: {
+    label: "Referral",
+    className:
+      "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
+  },
+}
+
+/** Class with fallback for rows predating migration 009 */
+function campaignClass(c: ClientCampaign): string {
+  return (
+    c.campaign_class ??
+    (c.campaign_type === "subsequence" ? "follow_up" : "primary")
+  )
+}
 
 interface SnapshotHistoryRow {
   campaign_id: number
@@ -105,11 +136,8 @@ function healthBarColor(status: "healthy" | "warning" | "critical"): string {
   return "bg-rose-500"
 }
 
-function isActiveCampaign(campaign: ClientCampaign): boolean {
-  const snap = campaign.latest
-  if (!snap) return false
-  return snap.unsent_leads > 0 || snap.all_time_emails_sent > 0
-}
+// Active/past split follows the REAL Smartlead status now that the tab
+// fetches all campaigns (was a sends-based heuristic over actives only).
 
 function formatNum(n: number): string {
   if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k"
@@ -212,7 +240,7 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange, sparklin
         <div className={cn("w-1 shrink-0", healthBarColor(healthResult.status))} />
 
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3">
-          {/* Name + type badge + lead status bar */}
+          {/* Name + class badge + lead status bar */}
           <div className="min-w-0 flex-[2]">
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-medium" title={campaign.campaign_name}>
@@ -221,13 +249,22 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange, sparklin
               <span
                 className={cn(
                   "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-                  campaign.campaign_type === "primary"
-                    ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                    : "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300"
+                  (CLASS_CHIP[campaignClass(campaign)] ?? CLASS_CHIP.primary)
+                    .className
                 )}
               >
-                {campaign.campaign_type === "primary" ? "Primary" : "Sub-seq"}
+                {(CLASS_CHIP[campaignClass(campaign)] ?? CLASS_CHIP.primary).label}
               </span>
+              {campaign.considered_done && (
+                <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                  Done ✓
+                </span>
+              )}
+              {!campaign.is_active && campaign.status && (
+                <span className="inline-flex shrink-0 items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
+                  {campaign.status.toLowerCase()}
+                </span>
+              )}
               <SpamRiskBadge risk={spamRisk} />
             </div>
             <LeadStatusBar snap={snap} />
@@ -271,6 +308,12 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange, sparklin
           </div>
 
           {/* Quick actions */}
+          <MarkDoneToggle
+            campaignSpId={campaign.id}
+            campaignName={campaign.campaign_name}
+            consideredDone={campaign.considered_done ?? false}
+            onChanged={onStatusChange}
+          />
           <CampaignActions
             smartleadCampaignId={campaign.smartlead_campaign_id}
             campaignName={campaign.campaign_name}
@@ -409,15 +452,18 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
 
   const filtered = useMemo(() => {
     if (typeFilter === "all") return campaigns
-    return campaigns.filter((c) => c.campaign_type === typeFilter)
+    return campaigns.filter((c) => campaignClass(c) === typeFilter)
   }, [campaigns, typeFilter])
 
-  // Split into active vs paused/completed, sorted worst-health-first, primary before subsequence
+  // Split by REAL Smartlead status (active vs past), sorted
+  // worst-health-first, primary before follow-up/referral
   const { active, paused } = useMemo(() => {
+    const classRank = (c: ClientCampaign) =>
+      campaignClass(c) === "primary" ? 0 : 1
     const sortFn = (a: ClientCampaign, b: ClientCampaign) => {
-      // Primary before subsequence
-      if (a.campaign_type !== b.campaign_type) {
-        return a.campaign_type === "primary" ? -1 : 1
+      // Primary before follow-up/referral
+      if (classRank(a) !== classRank(b)) {
+        return classRank(a) - classRank(b)
       }
       // Worst health first
       const aSnap = a.latest
@@ -433,8 +479,8 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
       return aHealth - bHealth // worst first
     }
 
-    const activeCampaigns = filtered.filter(isActiveCampaign).sort(sortFn)
-    const pausedCampaigns = filtered.filter((c) => !isActiveCampaign(c)).sort(sortFn)
+    const activeCampaigns = filtered.filter((c) => c.is_active).sort(sortFn)
+    const pausedCampaigns = filtered.filter((c) => !c.is_active).sort(sortFn)
 
     return { active: activeCampaigns, paused: pausedCampaigns }
   }, [filtered])
@@ -462,7 +508,8 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
             <SelectItem value="primary">Primary</SelectItem>
-            <SelectItem value="subsequence">Subsequence</SelectItem>
+            <SelectItem value="follow_up">Follow-up</SelectItem>
+            <SelectItem value="referral">Referral</SelectItem>
           </SelectContent>
         </Select>
 
@@ -563,9 +610,12 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
             onClick={() => setPausedCollapsed((v) => !v)}
           >
             <span className="inline-block h-2 w-2 rounded-full bg-stone-400" />
-            Paused &amp; Completed
+            Past Campaigns
             <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-normal text-stone-600 dark:bg-stone-800 dark:text-stone-300">
               {paused.length}
+            </span>
+            <span className="text-xs font-normal text-muted-foreground">
+              paused · completed · drafted · archived
             </span>
             <ChevronDown
               className={cn(

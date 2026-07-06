@@ -6,7 +6,7 @@ import { MiniSendChart } from "@/components/clients/mini-send-chart"
 import { SendReplyChart } from "@/components/clients/send-reply-chart"
 import { RepliesChart } from "@/components/clients/replies-chart"
 import { PerformanceMetrics } from "@/components/clients/performance-metrics"
-import { LeadPipelineFunnel } from "@/components/clients/lead-pipeline-funnel"
+import { ReadyBankCard } from "@/components/clients/ready-bank-card"
 import { RunwayCapacityWidget } from "@/components/clients/runway-capacity-widget"
 import { AnomalyCallouts } from "@/components/clients/anomaly-callouts"
 import { replyRateColor, healthColor, alertSeverityColor } from "@/lib/design-tokens"
@@ -15,6 +15,7 @@ import { getClientRecipientSplit } from "@/lib/queries/portfolio"
 import { TodayLiveStrip } from "@/components/shared/today-live-strip"
 import { ProviderSplitCard } from "@/components/clients/provider-split-card"
 import { getClientAlerts, resolveClientSlugs } from "@/lib/queries/clients"
+import { getClientReadyBank } from "@/lib/queries/ready-bank"
 import { getClientTotalReplies } from "@/lib/queries/campaigns"
 import { detectAnomalies } from "@/lib/scoring/anomaly-detection"
 import { formatDistanceToNow } from "date-fns"
@@ -35,7 +36,7 @@ export async function OverviewTab({
   config,
   alertCount,
 }: OverviewTabProps) {
-  const [history, anomalyHistory, sendReplyHistory, topAlerts, totalReplies, replyData, performanceHistory, todayLive, providerSplit, recipientSplit, childSlugs] = await Promise.all([
+  const [history, anomalyHistory, sendReplyHistory, topAlerts, totalReplies, replyData, performanceHistory, todayLive, providerSplit, recipientSplit, childSlugs, readyBank] = await Promise.all([
     getClientRecentHistory(clientSlug, 7),
     getClientAnomalyHistory(clientSlug, 14),
     getClientSendReplyHistory(clientSlug, 14),
@@ -47,6 +48,7 @@ export async function OverviewTab({
     getClientProviderSplit(clientSlug, 14),
     getClientRecipientSplit(clientSlug, 14),
     resolveClientSlugs(clientSlug),
+    getClientReadyBank(clientSlug),
   ])
   const anomalies = detectAnomalies(anomalyHistory, config)
 
@@ -178,8 +180,9 @@ export async function OverviewTab({
       {/* Provider Performance (sender infrastructure + recipient inbox split) */}
       <ProviderSplitCard rows={providerSplit} days={14} recipient={recipientSplit} />
 
-      {/* Lead Pipeline Funnel */}
-      <LeadPipelineFunnel snapshot={latestSnapshot} />
+      {/* Ready Bank — the qualified-lead fuel tank (replaces the old
+          lead-pipeline funnel per Omar's 07-06 review) */}
+      <ReadyBankCard data={readyBank} />
 
       {/* Runway & Capacity */}
       <RunwayCapacityWidget snapshot={latestSnapshot} config={config} />

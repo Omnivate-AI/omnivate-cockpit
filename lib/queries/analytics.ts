@@ -1,6 +1,7 @@
 import { cache } from "react"
 import { createServerClient } from "@/lib/supabase/server"
 import { getActiveClients, resolveClientSlugs } from "@/lib/queries/clients"
+import { getReadyBankBySlug, type ReadyBankRow } from "@/lib/queries/ready-bank"
 import type { ClientConfig, ClientSnapshot, DailyTargets } from "@/types/analytics"
 import { getTargetForDate } from "@/types/analytics"
 
@@ -179,8 +180,9 @@ function buildSnapshot(params: {
   health: HealthSummaryRow | null
   dailyFacts: ClientDailyFactsRow | null
   primaryRunway?: PrimaryRunwayRow | null
+  readyBank?: ReadyBankRow | null
 }): ClientSnapshot | null {
-  const { slug, config, latestPerf, periodSends, lifetime, capacity, health, dailyFacts, primaryRunway } = params
+  const { slug, config, latestPerf, periodSends, lifetime, capacity, health, dailyFacts, primaryRunway, readyBank } = params
   if (!latestPerf && !lifetime && !health) return null
 
   // Lead progress + runway are PRIMARY-scoped when the client has active
@@ -211,9 +213,10 @@ function buildSnapshot(params: {
     display_name:
       config?.display_name ?? latestPerf?.display_name ?? slug,
     parent_client: config?.parent_client ?? null,
-    // Lead-bank metrics lived in the legacy lead-table refresh; not tracked in sp_*.
-    ready_leads: 0,
-    qualified_no_email: 0,
+    // Ready Bank counts from cockpit_ready_bank_daily (migration 010):
+    // ready = verified email + not yet in a campaign; no-email = LinkedIn-only.
+    ready_leads: readyBank?.available_email ?? 0,
+    qualified_no_email: readyBank?.linkedin_only ?? 0,
     total_leads_in_campaigns: totalLeads,
     unsent_campaign_leads: notStarted,
     subsequence_unsent: 0,
@@ -250,7 +253,7 @@ function buildSnapshot(params: {
 async function fetchClientBundles(slugs: string[]) {
   const supabase = createServerClient()
 
-  const [lifetimeRes, capacityRes, healthRes, factsRes, primaryRunwayRes] =
+  const [lifetimeRes, capacityRes, healthRes, factsRes, primaryRunwayRes, readyBankBySlug] =
     await Promise.all([
       supabase.from("vw_cockpit_client_lifetime").select("*").in("client", slugs),
       supabase.from("vw_cockpit_client_capacity").select("*").in("client", slugs),
@@ -270,6 +273,7 @@ async function fetchClientBundles(slugs: string[]) {
         .from("vw_cockpit_client_runway")
         .select("*")
         .in("client", slugs),
+      getReadyBankBySlug(slugs),
     ])
 
   const lifetimeByClient = new Map<string, LifetimeRow>()
@@ -299,6 +303,7 @@ async function fetchClientBundles(slugs: string[]) {
     healthByClient,
     factsByClient,
     primaryRunwayByClient,
+    readyBankBySlug,
   }
 }
 
@@ -451,6 +456,7 @@ export const getClientSummaries = cache(
       healthByClient,
       factsByClient,
       primaryRunwayByClient,
+      readyBankBySlug,
     } = await fetchClientBundles(activeSlugs)
 
     // 4. Open ACTIONABLE alert counts per client (migration 008)
@@ -479,6 +485,7 @@ export const getClientSummaries = cache(
         health: healthByClient.get(slug) ?? null,
         dailyFacts: factsByClient.get(slug) ?? null,
         primaryRunway: primaryRunwayByClient.get(slug) ?? null,
+        readyBank: readyBankBySlug.get(slug) ?? null,
       })
 
     // 5. Group by parent_client — children with the same parent become ONE summary
@@ -597,6 +604,7 @@ export const getClientSnapshot = cache(
           health: bundles.healthByClient.get(s) ?? null,
           dailyFacts: bundles.factsByClient.get(s) ?? null,
           primaryRunway: bundles.primaryRunwayByClient.get(s) ?? null,
+          readyBank: bundles.readyBankBySlug.get(s) ?? null,
         })
       )
       .filter((s): s is ClientSnapshot => s != null)

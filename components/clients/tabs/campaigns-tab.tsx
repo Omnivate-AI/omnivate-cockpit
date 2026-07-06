@@ -10,8 +10,10 @@ interface CampaignsTabProps {
 }
 
 export async function CampaignsTab({ clientSlug }: CampaignsTabProps) {
+  // "all" = active AND past campaigns (Omar 07-06) — the table splits them
+  // by real Smartlead status and collapses the past section by default.
   const [campaigns, snapshotHistory, placements] = await Promise.all([
-    getClientCampaigns(clientSlug),
+    getClientCampaigns(clientSlug, "all"),
     getClientCampaignSnapshots(clientSlug),
     getClientPlacementResults(clientSlug),
   ])
@@ -21,7 +23,7 @@ export async function CampaignsTab({ clientSlug }: CampaignsTabProps) {
       <EmptyState
         icon={Megaphone}
         title="No Campaigns"
-        description="No active campaigns found for this client."
+        description="No campaigns found for this client."
       />
     )
   }
@@ -31,7 +33,12 @@ export async function CampaignsTab({ clientSlug }: CampaignsTabProps) {
       <div className="flex justify-end">
         <SectionFreshness mode="sync" prefix="Campaign stats synced" />
       </div>
-      <DeliverabilityIssues campaigns={campaigns} placements={placements} snapshotHistory={snapshotHistory} />
+      {/* Deliverability issues only make sense for campaigns still sending */}
+      <DeliverabilityIssues
+        campaigns={campaigns.filter((c) => c.is_active)}
+        placements={placements}
+        snapshotHistory={snapshotHistory}
+      />
       <CampaignPerformanceTable campaigns={campaigns} snapshotHistory={snapshotHistory} />
     </div>
   )
