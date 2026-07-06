@@ -70,8 +70,9 @@ export interface MailboxAction {
   created_at: string
 }
 
-// Backed by sp_infra_alerts (via vw_cockpit_alerts). Status vocabulary is the
-// sp_* one: open | resolved (the old "dismissed" maps to resolved + note).
+// Backed by sp_infra_alerts UNION cockpit_alerts (via vw_cockpit_alerts).
+// Status vocabulary is the sp_* one: open | resolved (the old "dismissed"
+// maps to resolved + note).
 export interface MailboxAlert {
   id: number
   alert_type: string
@@ -88,6 +89,13 @@ export interface MailboxAlert {
   resolved_by: string | null
   resolved_at: string | null
   created_at: string
+  // Alert rebuild (Omar 2026-07-06, migration 008): 'actionable' = a human
+  // must act now; 'maintenance' = self-healing retries / cleanup chores.
+  // Top-line counts show actionable only.
+  tier?: "actionable" | "maintenance"
+  // 'infra' = sp_infra_alerts (email-infra plugin) · 'cockpit' = app-generated
+  // (cockpit ids are exposed +1e9 so resolve routes band on id)
+  source?: "infra" | "cockpit"
 }
 
 // Canonical taxonomy = the sp_* model (email-infra plugin owns it):

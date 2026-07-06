@@ -44,6 +44,11 @@ export async function AlertsTab({ clientSlug }: AlertsTabProps) {
             {summary.resolvedThisWeek} resolved this week
           </span>
         )}
+        {summary.maintenance > 0 && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-muted-foreground">
+            {summary.maintenance} maintenance
+          </span>
+        )}
       </div>
 
       <AlertsTable

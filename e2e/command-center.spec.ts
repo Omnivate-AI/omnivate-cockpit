@@ -26,7 +26,7 @@ test("KPI cards render", async ({ page }) => {
     "Interested Replies",
     "Total Replies",
     "Overall Reply Rate",
-    "Active Alerts",
+    "Actionable Alerts", // tiered per the 07-06 alert rebuild
     "Sending Capacity",
   ]) {
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible()

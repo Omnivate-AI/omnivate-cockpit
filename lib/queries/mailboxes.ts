@@ -394,6 +394,13 @@ export interface ClientCapacityRow {
   in_service_total: number
   in_service_healthy: number
   in_service_burnt: number
+  // Boxes below the 97% burn threshold on an in-play lifecycle (not
+  // retired/parked/burnt/master) — same definition as the Command Center
+  // at-risk metric (vw_cockpit_portfolio_health). THE action-now number:
+  // a box can be effectively burnt while its lifecycle still says "active"
+  // (burnt lifecycle is only stamped at rotation). Omar 2026-07-06: the
+  // burnt card showed 0 while two 81% boxes were still sending.
+  at_risk_in_play: number
   in_service_daily_capacity: number
   full_capacity: number
   persona_breakdown: Array<{
@@ -474,13 +481,23 @@ export const getClientCapacitySnapshot = cache(
     let inServiceHealthy = 0
     let inServiceBurnt = 0
     let inServiceCapacity = 0
+    let atRiskInPlay = 0
     for (const acc of inServiceRows.data ?? []) {
+      const health = acc.warmup_health_pct as number | null
+      // At-risk regardless of Smartlead tag: below threshold on an in-play
+      // lifecycle (rows here already exclude retired/parked/master).
+      if (
+        health !== null &&
+        health < 97 &&
+        acc.lifecycle_status !== "burnt"
+      ) {
+        atRiskInPlay++
+      }
       const tags = (acc.smartlead_tags as string[] | null) ?? []
       const tagged = tags.some((t) =>
         String(t).toLowerCase().endsWith("_active")
       )
       if (!tagged) continue
-      const health = acc.warmup_health_pct as number | null
       const boxCap = (acc.max_email_per_day as number | null) ?? 0
       const isBurnt = health !== null && health < 97
       const key = (acc.persona as string | null) ?? "_"
@@ -593,6 +610,7 @@ export const getClientCapacitySnapshot = cache(
       in_service_total: inServiceTotal,
       in_service_healthy: inServiceHealthy,
       in_service_burnt: inServiceBurnt,
+      at_risk_in_play: atRiskInPlay,
       in_service_daily_capacity: inServiceCapacity,
       full_capacity: inServiceHealthy * DAILY_CAPACITY_PER_MAILBOX,
       persona_breakdown: personaBreakdown,

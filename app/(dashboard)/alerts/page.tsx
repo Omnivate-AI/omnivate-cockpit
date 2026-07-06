@@ -20,6 +20,7 @@ interface AlertsPageProps {
     client?: string
     status?: string
     alert_type?: string
+    tier?: string
     page?: string
   }>
 }
@@ -34,6 +35,14 @@ export default async function AlertsPage({ searchParams }: AlertsPageProps) {
   const client = params.client || null
   const alertType = params.alert_type || null
   const isResolved = params.status === "resolved"
+  // Default view = ACTIONABLE only (Omar 07-06 alert rebuild). Maintenance
+  // noise is reachable via the tier filter, never the default.
+  const tier =
+    params.tier === "maintenance"
+      ? "maintenance"
+      : params.tier === "all"
+        ? null
+        : "actionable"
   const page = Number(params.page ?? "1")
 
   const [unresolvedResult, resolvedResult, summary, alertTypes, clients] =
@@ -42,6 +51,7 @@ export default async function AlertsPage({ searchParams }: AlertsPageProps) {
         severity,
         client,
         alertType,
+        tier,
         resolved: false,
         page: isResolved ? 1 : page,
         pageSize: isResolved ? 25 : PAGE_SIZE,
@@ -50,11 +60,12 @@ export default async function AlertsPage({ searchParams }: AlertsPageProps) {
         severity,
         client,
         alertType,
+        tier,
         resolved: true,
         page: isResolved ? page : 1,
         pageSize: isResolved ? PAGE_SIZE : 25,
       }),
-      getGlobalAlertSummary(),
+      getGlobalAlertSummary(tier),
       getDistinctAlertTypes(),
       getActiveClients(),
     ])

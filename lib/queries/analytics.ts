@@ -354,7 +354,8 @@ export const getGlobalKPIs = cache(async (days: number = 1): Promise<GlobalKPIs>
     supabase
       .from("vw_cockpit_alerts")
       .select("*", { count: "exact", head: true })
-      .eq("status", "open"),
+      .eq("status", "open")
+      .eq("tier", "actionable"),
   ])
 
   let emailsSentPeriod = 0
@@ -452,11 +453,12 @@ export const getClientSummaries = cache(
       primaryRunwayByClient,
     } = await fetchClientBundles(activeSlugs)
 
-    // 4. Open alert counts per client
+    // 4. Open ACTIONABLE alert counts per client (migration 008)
     const { data: alertRows } = await supabase
       .from("vw_cockpit_alerts")
       .select("client")
       .eq("status", "open")
+      .eq("tier", "actionable")
       .in("client", activeSlugs)
 
     const alertCounts = new Map<string, number>()

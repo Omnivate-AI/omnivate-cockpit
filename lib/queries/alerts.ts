@@ -3,8 +3,15 @@ import { createServerClient } from "@/lib/supabase/server"
 import type { MailboxAlert } from "@/lib/types"
 import type { AlertWithDomain } from "./clients"
 
-// All alert reads go through vw_cockpit_alerts (sp_infra_alerts + domain name).
-// Status vocabulary is the sp_* one: open | resolved.
+// All alert reads go through vw_cockpit_alerts (sp_infra_alerts UNION
+// cockpit_alerts, + domain name + tier). Status vocabulary is the sp_*
+// one: open | resolved.
+//
+// Alert rebuild (Omar 2026-07-06, migration 008): every alert carries a
+// tier — 'actionable' (act now: burns, low rep, send blocks, lead runway)
+// vs 'maintenance' (self-healing retries, cleanup). All TOP-LINE counts
+// (Command Center KPI, sidebar badge, client cards, banners) count
+// actionable ONLY — the raw pile is what made the old numbers untrusted.
 
 // --- Interfaces ---
 
@@ -12,6 +19,8 @@ export interface AlertListFilters {
   severity?: string | null
   client?: string | null
   alertType?: string | null
+  /** 'actionable' | 'maintenance' | null (null = all tiers) */
+  tier?: string | null
   resolved?: boolean
   page?: number
   pageSize?: number
@@ -47,6 +56,7 @@ export const getAlertList = cache(
       severity,
       client,
       alertType,
+      tier,
       resolved = false,
       page = 1,
       pageSize = 25,
@@ -57,6 +67,10 @@ export const getAlertList = cache(
       .select("*", { count: "exact" })
       .eq("status", resolved ? "resolved" : "open")
       .order("created_at", { ascending: false })
+
+    if (tier) {
+      query = query.eq("tier", tier)
+    }
 
     if (severity) {
       query = query.eq("severity", severity)
@@ -95,11 +109,13 @@ export const getAlertCounts = cache(
   }> => {
     const supabase = createServerClient()
 
+    // Sidebar badge counts ACTIONABLE open alerts only (migration 008)
     const [unresolvedRes, resolvedRes] = await Promise.all([
       supabase
         .from("vw_cockpit_alerts")
         .select("*", { count: "exact", head: true })
-        .eq("status", "open"),
+        .eq("status", "open")
+        .eq("tier", "actionable"),
       supabase
         .from("vw_cockpit_alerts")
         .select("*", { count: "exact", head: true })
@@ -140,6 +156,8 @@ export const getRecentAlerts = cache(
 export interface ClientAlertSummary {
   critical: number
   warning: number
+  /** Open maintenance-tier alerts — shown as a muted count, never as urgency */
+  maintenance: number
   resolvedThisWeek: number
 }
 
@@ -182,17 +200,29 @@ export const getClientAlertData = cache(
     const unresolved = ((unresolvedRes.data ?? []) as AlertWithDomain[]).map(
       normalize
     )
+    // Actionable first (the act-now list), maintenance after; newest first
+    // within each tier.
+    unresolved.sort((a, b) => {
+      const ta = a.tier === "maintenance" ? 1 : 0
+      const tb = b.tier === "maintenance" ? 1 : 0
+      if (ta !== tb) return ta - tb
+      return (b.created_at ?? "").localeCompare(a.created_at ?? "")
+    })
     const recentlyResolved = (
       (resolvedRes.data ?? []) as AlertWithDomain[]
     ).map(normalize)
 
+    // Urgency counts come from ACTIONABLE alerts only (migration 008) —
+    // maintenance noise is what made the old counts untrusted.
+    const actionable = unresolved.filter((a) => a.tier !== "maintenance")
     const summary: ClientAlertSummary = {
-      critical: unresolved.filter((a) =>
+      critical: actionable.filter((a) =>
         ["critical", "high"].includes(a.severity)
       ).length,
-      warning: unresolved.filter((a) =>
+      warning: actionable.filter((a) =>
         ["warning", "medium"].includes(a.severity)
       ).length,
+      maintenance: unresolved.length - actionable.length,
       resolvedThisWeek: recentlyResolved.length,
     }
 
@@ -210,6 +240,7 @@ export const getTopAlerts = cache(
         "id, alert_type, severity, title, description, created_at, client, domain_name"
       )
       .eq("status", "open")
+      .eq("tier", "actionable") // the banner only promotes act-now alerts
       .order("severity", { ascending: true }) // critical before warning (alphabetical)
       .order("created_at", { ascending: false })
       .limit(limit)
@@ -236,24 +267,31 @@ export interface GlobalAlertSummary {
 }
 
 export const getGlobalAlertSummary = cache(
-  async (): Promise<GlobalAlertSummary> => {
+  async (tier: string | null = "actionable"): Promise<GlobalAlertSummary> => {
     const supabase = createServerClient()
 
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
     const weekAgo = sevenDaysAgo.toISOString()
 
+    const withTier = <T extends { eq: (c: string, v: string) => T }>(q: T): T =>
+      tier ? q.eq("tier", tier) : q
+
     const [criticalRes, warningRes, resolvedRes] = await Promise.all([
-      supabase
-        .from("vw_cockpit_alerts")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "open")
-        .in("severity", ["critical", "high"]),
-      supabase
-        .from("vw_cockpit_alerts")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "open")
-        .in("severity", ["warning", "medium"]),
+      withTier(
+        supabase
+          .from("vw_cockpit_alerts")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "open")
+          .in("severity", ["critical", "high"])
+      ),
+      withTier(
+        supabase
+          .from("vw_cockpit_alerts")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "open")
+          .in("severity", ["warning", "medium"])
+      ),
       supabase
         .from("vw_cockpit_alerts")
         .select("*", { count: "exact", head: true })

@@ -31,10 +31,16 @@ export function CapacityKPICards({ data }: CapacityKPICardsProps) {
   const capacity = CAPACITY_STYLES[data.capacity_state]
   const reserve = RESERVE_STYLES[data.reserve_state]
 
+  // Priority: boxes below threshold still in play (SWAP NOW) > burnt-domain
+  // teardown backlog (CLEANUP) > all clear. The big number was previously
+  // lifecycle='burnt' mailboxes, which reads 0 exactly when boxes are
+  // burning in service (lifecycle only flips at rotation) — Omar 07-06.
   const burnActionBadge =
-    data.burnt_domain_count === 0
-      ? { border: "border-emerald-200 dark:border-emerald-900", bg: "bg-emerald-50 dark:bg-emerald-950/40", text: "text-emerald-700 dark:text-emerald-400", badgeText: "No Action" }
-      : { border: "border-rose-300 dark:border-rose-900", bg: "bg-rose-50 dark:bg-rose-950/40", text: "text-rose-700 dark:text-rose-400", badgeText: `${data.burnt_domain_count} DOMAINS` }
+    data.at_risk_in_play > 0
+      ? { border: "border-rose-300 dark:border-rose-900", bg: "bg-rose-50 dark:bg-rose-950/40", text: "text-rose-700 dark:text-rose-400", badgeText: `${data.at_risk_in_play} SWAP NOW` }
+      : data.burnt_domain_count > 0
+        ? { border: "border-amber-200 dark:border-amber-900", bg: "bg-amber-50 dark:bg-amber-950/40", text: "text-amber-700 dark:text-amber-400", badgeText: "CLEANUP" }
+        : { border: "border-emerald-200 dark:border-emerald-900", bg: "bg-emerald-50 dark:bg-emerald-950/40", text: "text-emerald-700 dark:text-emerald-400", badgeText: "No Action" }
 
   return (
     <>
@@ -185,14 +191,15 @@ export function CapacityKPICards({ data }: CapacityKPICardsProps) {
           </CardContent>
         </Card>
 
-        {/* Card 3: Actions Needed */}
+        {/* Card 3: Needs Action — leads with boxes burning while still in
+            play (the emergency), then the teardown backlog (the cleanup) */}
         <Card className={cn("relative overflow-hidden border-2", burnActionBadge.border)}>
           <CardContent className={cn("px-4 py-4", burnActionBadge.bg)}>
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-1.5">
                 <AlertTriangle className={cn("h-4 w-4", burnActionBadge.text)} />
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Burnt — Action Needed
+                  Needs Action
                 </p>
               </div>
               <span
@@ -208,13 +215,25 @@ export function CapacityKPICards({ data }: CapacityKPICardsProps) {
             </div>
             <div className="mt-2 flex items-baseline gap-2">
               <span className={cn("text-3xl font-bold tabular-nums", burnActionBadge.text)}>
-                {data.burnt}
+                {data.at_risk_in_play}
               </span>
-              <span className="text-xs text-muted-foreground">burnt mailboxes</span>
+              <span className="text-xs text-muted-foreground">
+                boxes below 97% still in play
+              </span>
             </div>
+            {data.in_service_burnt > 0 && (
+              <div className="mt-1 text-xs font-medium text-rose-700 dark:text-rose-400">
+                {data.in_service_burnt} in the live sending pool — swap in reserves
+              </div>
+            )}
+            {data.burnt > 0 && (
+              <div className="mt-1 text-xs text-muted-foreground">
+                {data.burnt} marked burnt, awaiting rotation
+              </div>
+            )}
             <div className="mt-1 text-xs text-muted-foreground">
               {data.burnt_domain_count > 0
-                ? `${data.burnt_domain_count} domain${data.burnt_domain_count !== 1 ? "s" : ""} need drain approval`
+                ? `${data.burnt_domain_count} burnt domain${data.burnt_domain_count !== 1 ? "s" : ""} awaiting teardown`
                 : "No burnt domains"}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">

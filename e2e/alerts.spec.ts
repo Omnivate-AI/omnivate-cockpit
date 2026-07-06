@@ -20,6 +20,20 @@ test("alerts page renders summary, filters and table", async ({ page }) => {
   ).toBeVisible()
 })
 
+test("tier filter present, actionable is the default view (07-06 rebuild)", async ({
+  page,
+}) => {
+  await page.goto("/alerts")
+  await expect(page.getByRole("heading", { name: "Alerts" })).toBeVisible({
+    timeout: 60_000,
+  })
+  // The tier select renders with Actionable as the default value; the
+  // maintenance pile is opt-in only. Structure-only — alert contents drift.
+  await expect(
+    page.getByText("Actionable", { exact: true }).first()
+  ).toBeVisible()
+})
+
 test("alert rows expand into a full-context detail (ALERT-3)", async ({
   page,
 }) => {

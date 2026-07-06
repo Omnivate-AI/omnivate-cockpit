@@ -130,7 +130,7 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
           valueColor={replyRateColors.text}
         />
         <MetricCard
-          title="Active Alerts"
+          title="Actionable Alerts"
           value={kpis.activeAlerts}
           icon={Bell}
           valueColor={kpis.activeAlerts > 0 ? "text-rose-600" : undefined}

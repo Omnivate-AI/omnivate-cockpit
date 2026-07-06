@@ -25,6 +25,8 @@ function AlertFiltersInner({ clients, alertTypes }: AlertFiltersInnerProps) {
   const client = searchParams.get("client") ?? ""
   const status = searchParams.get("status") ?? ""
   const alertType = searchParams.get("alert_type") ?? ""
+  // Absent = the actionable default (Omar 07-06 alert rebuild)
+  const tier = searchParams.get("tier") ?? "actionable"
 
   const updateParams = useCallback(
     (updates: Record<string, string | null>) => {
@@ -42,10 +44,29 @@ function AlertFiltersInner({ clients, alertTypes }: AlertFiltersInnerProps) {
     [router, searchParams]
   )
 
-  const hasFilters = severity || client || status || alertType
+  const hasFilters =
+    severity || client || status || alertType || tier !== "actionable"
 
   return (
     <div className="flex flex-wrap items-center gap-3">
+      {/* Tier Filter — actionable is the trusted default; maintenance is
+          the self-healing/cleanup noise, opt-in only */}
+      <Select
+        value={tier}
+        onValueChange={(v) =>
+          updateParams({ tier: v === "actionable" ? null : v })
+        }
+      >
+        <SelectTrigger className="w-[170px]">
+          <SelectValue placeholder="Actionable" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="actionable">Actionable</SelectItem>
+          <SelectItem value="maintenance">Maintenance</SelectItem>
+          <SelectItem value="all">All Tiers</SelectItem>
+        </SelectContent>
+      </Select>
+
       {/* Severity Filter */}
       <Select
         value={severity || "all"}
@@ -134,6 +155,7 @@ function AlertFiltersInner({ clients, alertTypes }: AlertFiltersInnerProps) {
               client: null,
               status: null,
               alert_type: null,
+              tier: null,
             })
           }
         >
