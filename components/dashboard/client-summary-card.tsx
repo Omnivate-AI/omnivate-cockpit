@@ -145,6 +145,23 @@ export function ClientSummaryCard({ config, latest, alertCount, periodDays = 1, 
             </p>
           )}
 
+          {/* Lead runway across ACTIVE PRIMARY campaigns (Omar 2026-07-06):
+              one glance = how much of the loaded lead bank is still left.
+              Follow-up/referral campaigns are excluded upstream
+              (vw_cockpit_client_runway). */}
+          {latest &&
+            latest.leads_not_started +
+              latest.leads_in_progress +
+              latest.leads_completed >
+              0 && (
+              <LeadRunwayBar
+                notStarted={latest.leads_not_started}
+                inProgress={latest.leads_in_progress}
+                completed={latest.leads_completed}
+                campaigns={latest.primary_active_campaigns}
+              />
+            )}
+
           {/* Runway: campaign + pipeline side by side */}
           {latest ? (
             <div className="grid grid-cols-2 gap-2">
@@ -155,6 +172,11 @@ export function ClientSummaryCard({ config, latest, alertCount, periodDays = 1, 
                 leads={latest.unsent_campaign_leads}
                 warningDays={config.runway_warning_days}
                 criticalDays={config.runway_critical_days}
+                detail={
+                  latest.remaining_emails != null && latest.daily_capacity > 0
+                    ? `${formatLeads(latest.remaining_emails)} emails ÷ ${latest.daily_capacity.toLocaleString()}/day`
+                    : undefined
+                }
               />
               <RunwayGauge
                 icon={Database}
@@ -219,6 +241,72 @@ function formatLeads(n: number): string {
   return n.toLocaleString()
 }
 
+/**
+ * Omar's "runway slider": completed → in progress → not started across the
+ * client's ACTIVE PRIMARY campaigns, summed. Emerald = fuel still in the
+ * tank; when the emerald segment vanishes the client is out of leads.
+ */
+function LeadRunwayBar({
+  notStarted,
+  inProgress,
+  completed,
+  campaigns,
+}: {
+  notStarted: number
+  inProgress: number
+  completed: number
+  campaigns?: number
+}) {
+  const total = notStarted + inProgress + completed
+  if (total <= 0) return null
+  const pct = (n: number) => (n / total) * 100
+
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          Lead Runway
+          {campaigns != null && campaigns > 0 ? ` · ${campaigns} primary` : ""}
+        </span>
+        <span className="text-[10px] tabular-nums text-muted-foreground">
+          {formatLeads(notStarted)} of {formatLeads(total)} left
+        </span>
+      </div>
+      <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full bg-stone-400 dark:bg-stone-600"
+          style={{ width: `${pct(completed)}%` }}
+          title={`Completed: ${completed.toLocaleString()}`}
+        />
+        <div
+          className="h-full bg-sky-400 dark:bg-sky-600"
+          style={{ width: `${pct(inProgress)}%` }}
+          title={`In progress: ${inProgress.toLocaleString()}`}
+        />
+        <div
+          className="h-full bg-emerald-500"
+          style={{ width: `${pct(notStarted)}%` }}
+          title={`Not started: ${notStarted.toLocaleString()}`}
+        />
+      </div>
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
+        <span>
+          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-stone-400 dark:bg-stone-600" />
+          {formatLeads(completed)} done
+        </span>
+        <span>
+          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-sky-400 dark:bg-sky-600" />
+          {formatLeads(inProgress)} in progress
+        </span>
+        <span>
+          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          {formatLeads(notStarted)} not started
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function RunwayGauge({
   icon: Icon,
   label,
@@ -226,6 +314,7 @@ function RunwayGauge({
   leads,
   warningDays,
   criticalDays,
+  detail,
 }: {
   icon: React.ComponentType<{ className?: string }>
   label: string
@@ -233,6 +322,9 @@ function RunwayGauge({
   leads: number
   warningDays: number
   criticalDays: number
+  /** Formula transparency, e.g. "40.5k emails ÷ 1,275/day" — every number
+      should explain itself (Omar 2026-07-06). Falls back to lead count. */
+  detail?: string
 }) {
   // 999 is the "not tracked in sp_*" sentinel (e.g. lead-bank runway) —
   // render it honestly instead of as a healthy-looking 999-day gauge.
@@ -265,7 +357,7 @@ function RunwayGauge({
             />
           </div>
           <p className="mt-1 text-[10px] tabular-nums text-muted-foreground">
-            {formatLeads(leads)} leads
+            {detail ?? `${formatLeads(leads)} leads`}
           </p>
         </>
       ) : (

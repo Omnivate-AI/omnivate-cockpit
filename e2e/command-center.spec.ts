@@ -55,6 +55,22 @@ test("client summary grid links to client pages", async ({ page }) => {
   await expect(page.locator('a[href^="/clients/"]').first()).toBeVisible()
 })
 
+test("lead runway slider renders on client cards (Omar 07-06)", async ({
+  page,
+}) => {
+  // Stacked completed/in-progress/not-started bar summed over ACTIVE
+  // PRIMARY campaigns, with the legend counts.
+  await expect(page.getByText(/Lead Runway/).first()).toBeVisible()
+  await expect(page.getByText(/not started/).first()).toBeVisible()
+  await expect(page.getByText(/in progress/).first()).toBeVisible()
+  // Formula transparency on the In Campaigns gauge
+  await expect(page.getByText(/emails ÷/).first()).toBeVisible()
+})
+
+test("send-targets chart is removed (Omar 07-06)", async ({ page }) => {
+  await expect(page.getByText(/Daily Send Volume/)).toHaveCount(0)
+})
+
 test("portfolio infra roll-up renders (PORT-2/3)", async ({ page }) => {
   await expect(
     page.getByText("Infrastructure across clients").first()

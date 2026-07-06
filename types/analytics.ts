@@ -67,11 +67,18 @@ export interface ClientSnapshot {
   runway_critical_days: number
   alert_types_sent: string[]
   snapshot_date: string
-  // Lead status breakdown (aggregated from primary campaigns)
+  // Lead status breakdown (aggregated from ACTIVE PRIMARY campaigns via
+  // vw_cockpit_client_runway — follow-up/referral campaigns excluded per
+  // Omar's 2026-07-06 review; falls back to all-campaign perf rows when
+  // the client has no active primaries reporting)
   leads_not_started: number
   leads_in_progress: number
   leads_completed: number
   leads_blocked: number
+  // Runway transparency (primary-scoped): the formula inputs, so the
+  // days number can explain itself in the UI (remaining ÷ capacity)
+  remaining_emails?: number
+  primary_active_campaigns?: number
   // Lifetime efficiency metrics (summed across primary campaigns)
   all_time_emails_sent: number
   all_time_interested: number

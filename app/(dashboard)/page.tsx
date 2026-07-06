@@ -1,6 +1,6 @@
 import { Suspense } from "react"
 import { Mail, MessageSquare, MessageCircle, Percent, Bell, Gauge } from "lucide-react"
-import { getGlobalKPIs, getClientSummaries, getDailySendHistory, getTodayLive } from "@/lib/queries/analytics"
+import { getGlobalKPIs, getClientSummaries, getTodayLive } from "@/lib/queries/analytics"
 import { getPortfolioHealth } from "@/lib/queries/portfolio"
 import { TodayLiveStrip } from "@/components/shared/today-live-strip"
 import { PortfolioHealthStrip } from "@/components/dashboard/portfolio-health-strip"
@@ -11,7 +11,6 @@ import { MetricCard } from "@/components/shared/metric-card"
 import { ClientSummaryGrid } from "@/components/dashboard/client-summary-grid"
 import { AlertsBanner } from "@/components/dashboard/alerts-banner"
 import { SpamRiskBanner } from "@/components/dashboard/spam-risk-banner"
-import { SendTargetChart } from "@/components/dashboard/send-target-chart"
 import { SyncStatusWidget } from "@/components/dashboard/sync-status-widget"
 import { SectionFreshness } from "@/components/shared/section-freshness"
 import { TimeRangeFilter } from "@/components/dashboard/time-range-filter"
@@ -33,11 +32,10 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
   const days = parseRangeDays(params.range)
   const rangeKey = params.range ?? "7d"
 
-  const [kpis, summaries, topAlerts, sendHistory, spamRisks, todayLive, portfolio] = await Promise.all([
+  const [kpis, summaries, topAlerts, spamRisks, todayLive, portfolio] = await Promise.all([
     getGlobalKPIs(days),
     getClientSummaries(days),
     getTopAlerts(5),
-    getDailySendHistory(days),
     getRecentSpamRisks(7, 3),
     getTodayLive(),
     getPortfolioHealth(),
@@ -68,7 +66,6 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
 
   const replyRateColors = replyRateColor(kpis.overallReplyRate)
   const emailsSentLabel = days === 1 ? "Emails Sent Yesterday" : `Emails Sent (${RANGE_LABELS[rangeKey] ?? `${days}d`})`
-  const chartLabel = `Daily Send Volume (${RANGE_LABELS[rangeKey] ?? `${days} days`})`
 
   return (
     <div className="space-y-8">
@@ -163,19 +160,10 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
         />
       </div>
 
-      {/* Daily Send Target Chart + Sync Status */}
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-[1fr_320px]">
-        <div>
-          <h2 className="mb-3 text-lg font-semibold text-foreground">
-            {chartLabel}
-          </h2>
-          <div className="rounded-lg border bg-card p-4">
-            <SendTargetChart data={sendHistory} />
-          </div>
-        </div>
-        <div className="lg:mt-9">
-          <SyncStatusWidget />
-        </div>
+      {/* Data Freshness — the send-targets chart was removed per Omar's 07-06 review
+          (min-sends-per-day targets idea parked for a future rebuild) */}
+      <div className="max-w-md">
+        <SyncStatusWidget />
       </div>
     </div>
   )

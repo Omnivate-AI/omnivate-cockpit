@@ -10,6 +10,10 @@ import { getTargetForDate } from "@/types/analytics"
 //   vw_cockpit_client_capacity    — mailbox-derived send capacity
 //   vw_cockpit_client_health_summary — lifecycle counts + avg warmup health
 //   vw_cockpit_client_daily_facts — plugin-computed runway/capacity per day
+//   vw_cockpit_client_runway      — PRIMARY-scoped runway + lead progress
+//     (cockpit_read_models_007: follow-up/referral campaigns excluded, and
+//     campaigns marked considered_done in cockpit_campaign_overrides don't
+//     count — Omar's 2026-07-06 review)
 //   vw_cockpit_freshness          — global "data as-of"
 //
 // client_analytics_config stays as the APP-OWNED targets/hierarchy table
@@ -71,6 +75,19 @@ interface ClientDailyFactsRow {
   runway_days: number | null
 }
 
+interface PrimaryRunwayRow {
+  client: string
+  primary_active_campaigns: number
+  total_leads: number
+  leads_not_started: number
+  leads_in_progress: number
+  leads_completed: number
+  remaining_emails: number
+  active_daily_capacity: number | null
+  runway_days: number | string | null
+  facts_date: string | null
+}
+
 // --- Helpers ---
 
 function defaultConfig(slug: string, displayName?: string | null): ClientConfig {
@@ -128,6 +145,10 @@ export function aggregateSnapshots(
     base.leads_in_progress += s.leads_in_progress ?? 0
     base.leads_completed += s.leads_completed ?? 0
     base.leads_blocked += s.leads_blocked ?? 0
+    base.remaining_emails =
+      (base.remaining_emails ?? 0) + (s.remaining_emails ?? 0)
+    base.primary_active_campaigns =
+      (base.primary_active_campaigns ?? 0) + (s.primary_active_campaigns ?? 0)
     base.total_runway_days = Math.min(
       base.total_runway_days ?? Infinity,
       s.total_runway_days ?? Infinity
@@ -157,18 +178,28 @@ function buildSnapshot(params: {
   capacity: CapacityRow | null
   health: HealthSummaryRow | null
   dailyFacts: ClientDailyFactsRow | null
+  primaryRunway?: PrimaryRunwayRow | null
 }): ClientSnapshot | null {
-  const { slug, config, latestPerf, periodSends, lifetime, capacity, health, dailyFacts } = params
+  const { slug, config, latestPerf, periodSends, lifetime, capacity, health, dailyFacts, primaryRunway } = params
   if (!latestPerf && !lifetime && !health) return null
 
-  const totalLeads = latestPerf?.total_leads_in_campaigns ?? 0
-  const notStarted = latestPerf?.leads_not_started ?? 0
-  const inProgress = latestPerf?.leads_in_progress ?? 0
-  const completed = Math.max(0, totalLeads - notStarted - inProgress)
+  // Lead progress + runway are PRIMARY-scoped when the client has active
+  // primary campaigns reporting (vw_cockpit_client_runway). Fallback to the
+  // all-campaign perf/plugin numbers keeps the card from blanking for
+  // clients with no active primaries (stability-first).
+  const pr = primaryRunway ?? null
+  const totalLeads =
+    pr?.total_leads ?? latestPerf?.total_leads_in_campaigns ?? 0
+  const notStarted = pr?.leads_not_started ?? latestPerf?.leads_not_started ?? 0
+  const inProgress = pr?.leads_in_progress ?? latestPerf?.leads_in_progress ?? 0
+  const completed =
+    pr?.leads_completed ?? Math.max(0, totalLeads - notStarted - inProgress)
   const dailyCapacity =
     dailyFacts?.active_daily_capacity ?? capacity?.active_daily_capacity ?? 0
   const runway =
-    dailyFacts?.runway_days ?? latestPerf?.campaign_runway_days ?? null
+    pr?.runway_days != null
+      ? Number(pr.runway_days)
+      : dailyFacts?.runway_days ?? latestPerf?.campaign_runway_days ?? null
   const emailsSent = periodSends ?? latestPerf?.emails_sent_count ?? 0
   const target = config?.daily_email_target ?? 0
   const nonRetiredMailboxes = health
@@ -199,11 +230,17 @@ function buildSnapshot(params: {
     runway_warning_days: config?.runway_warning_days ?? 7,
     runway_critical_days: config?.runway_critical_days ?? 3,
     alert_types_sent: [],
-    snapshot_date: latestPerf?.snapshot_date ?? dailyFacts?.snapshot_date ?? "",
+    snapshot_date:
+      latestPerf?.snapshot_date ??
+      dailyFacts?.snapshot_date ??
+      pr?.facts_date ??
+      "",
     leads_not_started: notStarted,
     leads_in_progress: inProgress,
     leads_completed: completed,
     leads_blocked: 0,
+    remaining_emails: pr?.remaining_emails ?? undefined,
+    primary_active_campaigns: pr?.primary_active_campaigns ?? undefined,
     all_time_emails_sent: lifetime?.all_time_emails_sent ?? 0,
     all_time_interested: lifetime?.all_time_interested ?? 0,
   }
@@ -213,22 +250,27 @@ function buildSnapshot(params: {
 async function fetchClientBundles(slugs: string[]) {
   const supabase = createServerClient()
 
-  const [lifetimeRes, capacityRes, healthRes, factsRes] = await Promise.all([
-    supabase.from("vw_cockpit_client_lifetime").select("*").in("client", slugs),
-    supabase.from("vw_cockpit_client_capacity").select("*").in("client", slugs),
-    supabase
-      .from("vw_cockpit_client_health_summary")
-      .select("*")
-      .in("client", slugs),
-    supabase
-      .from("vw_cockpit_client_daily_facts")
-      .select(
-        "client, snapshot_date, active_campaigns, remaining_emails, active_mailboxes, active_daily_capacity, runway_days"
-      )
-      .in("client", slugs)
-      .order("snapshot_date", { ascending: false })
-      .limit(slugs.length * 8),
-  ])
+  const [lifetimeRes, capacityRes, healthRes, factsRes, primaryRunwayRes] =
+    await Promise.all([
+      supabase.from("vw_cockpit_client_lifetime").select("*").in("client", slugs),
+      supabase.from("vw_cockpit_client_capacity").select("*").in("client", slugs),
+      supabase
+        .from("vw_cockpit_client_health_summary")
+        .select("*")
+        .in("client", slugs),
+      supabase
+        .from("vw_cockpit_client_daily_facts")
+        .select(
+          "client, snapshot_date, active_campaigns, remaining_emails, active_mailboxes, active_daily_capacity, runway_days"
+        )
+        .in("client", slugs)
+        .order("snapshot_date", { ascending: false })
+        .limit(slugs.length * 8),
+      supabase
+        .from("vw_cockpit_client_runway")
+        .select("*")
+        .in("client", slugs),
+    ])
 
   const lifetimeByClient = new Map<string, LifetimeRow>()
   for (const r of (lifetimeRes.data ?? []) as LifetimeRow[]) {
@@ -246,8 +288,18 @@ async function fetchClientBundles(slugs: string[]) {
   for (const r of (factsRes.data ?? []) as ClientDailyFactsRow[]) {
     if (!factsByClient.has(r.client)) factsByClient.set(r.client, r)
   }
+  const primaryRunwayByClient = new Map<string, PrimaryRunwayRow>()
+  for (const r of (primaryRunwayRes.data ?? []) as PrimaryRunwayRow[]) {
+    primaryRunwayByClient.set(r.client, r)
+  }
 
-  return { lifetimeByClient, capacityByClient, healthByClient, factsByClient }
+  return {
+    lifetimeByClient,
+    capacityByClient,
+    healthByClient,
+    factsByClient,
+    primaryRunwayByClient,
+  }
 }
 
 // --- Interfaces ---
@@ -391,9 +443,14 @@ export const getClientSummaries = cache(
       )
     }
 
-    // 3. Lifetime, capacity, health, plugin daily facts
-    const { lifetimeByClient, capacityByClient, healthByClient, factsByClient } =
-      await fetchClientBundles(activeSlugs)
+    // 3. Lifetime, capacity, health, plugin daily facts, primary runway
+    const {
+      lifetimeByClient,
+      capacityByClient,
+      healthByClient,
+      factsByClient,
+      primaryRunwayByClient,
+    } = await fetchClientBundles(activeSlugs)
 
     // 4. Open alert counts per client
     const { data: alertRows } = await supabase
@@ -419,6 +476,7 @@ export const getClientSummaries = cache(
         capacity: capacityByClient.get(slug) ?? null,
         health: healthByClient.get(slug) ?? null,
         dailyFacts: factsByClient.get(slug) ?? null,
+        primaryRunway: primaryRunwayByClient.get(slug) ?? null,
       })
 
     // 5. Group by parent_client — children with the same parent become ONE summary
@@ -536,6 +594,7 @@ export const getClientSnapshot = cache(
           capacity: bundles.capacityByClient.get(s) ?? null,
           health: bundles.healthByClient.get(s) ?? null,
           dailyFacts: bundles.factsByClient.get(s) ?? null,
+          primaryRunway: bundles.primaryRunwayByClient.get(s) ?? null,
         })
       )
       .filter((s): s is ClientSnapshot => s != null)
