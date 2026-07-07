@@ -2,6 +2,8 @@
 
 **From:** Amzat · **For:** Omar · **Source:** our internal-software walkthrough (Mon 6 Jul) · **Purpose:** confirm I understood the requirements — flag anything I got wrong.
 
+*Rev 2 (Tue 7 Jul): R7 revised per your ClickUp feedback — the send target stays, as a per-client weekday send-floor alert.*
+
 ## What this software is
 
 One place where the team sees **how every client is performing** and **manages email infrastructure** — reading everything from our Supabase tables, refreshed by the daily morning sync. The accuracy bar is **correct for the last 24 hours**; real-time is a future nice-to-have, only if it can be done seamlessly.
@@ -25,7 +27,7 @@ Two ground rules you set:
 
 **R6 — Runway calculation.** The runway number mirrors the smartlead-perf plugin's calculation exactly, and is presented so it can be trusted at a glance — the number shows how it was derived.
 
-**R7 — Send Targets removed.** The current send-targets component isn't useful — remove it. (The underlying idea — a per-client minimum emails/day with an alert when we drop below it — is parked for a possible future rebuild.)
+**R7 — Send-floor alert.** The send target stays: a **specific minimum daily send number, settable per client**; if a client's sending falls below that number **on a weekday**, we get alerted. **Weekends never trigger the alert.** The old send-targets chart component stays removed — this lives in the alert system, with the number editable per client (Mailboxes tab → Sending Capacity card).
 
 **R8 — Burnt / at-risk visibility.** Burnt and at-risk mailboxes must be visible and correct: when boxes are burnt the dashboard says so, per client, with what to do about it — no more "action required" cards reading zero.
 
