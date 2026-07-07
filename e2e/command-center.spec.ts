@@ -45,10 +45,11 @@ test("Data Freshness panel shows the real sync signals", async ({ page }) => {
       timeout: 30_000,
     })
   }
-  // PORT-1 refresh button exists
+  // Refresh button removed 2026-07-07 (manual dispatch dropped) — the panel
+  // is read-only; it must NOT render a Refresh control.
   await expect(
-    page.getByRole("button", { name: "Refresh", exact: true }).first()
-  ).toBeVisible()
+    page.getByRole("button", { name: "Refresh", exact: true })
+  ).toHaveCount(0)
 })
 
 test("client summary grid links to client pages", async ({ page }) => {

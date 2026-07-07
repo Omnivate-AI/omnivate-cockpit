@@ -23,25 +23,6 @@ test("recent-runs returns sync runs plus the freshness payload", async ({
   }
 })
 
-test("analytics refresh reports its configuration state", async ({
-  page,
-}) => {
-  const res = await page.request.get("/api/analytics/refresh")
-  expect(res.ok()).toBeTruthy()
-  const data = await res.json()
-  expect(typeof data.configured).toBe("boolean")
-})
-
-test("refresh POST is honest when unconfigured", async ({ page }) => {
-  const probe = await page.request.get("/api/analytics/refresh")
-  const { configured } = await probe.json()
-  const res = await page.request.post("/api/analytics/refresh")
-  if (configured) {
-    // Dispatch path: accepted (or a clear upstream error, never a 500 crash)
-    expect([202, 502]).toContain(res.status())
-  } else {
-    expect(res.status()).toBe(501)
-    const data = await res.json()
-    expect(data.error).toContain("GITHUB_SYNC_TOKEN")
-  }
-})
+// The manual analytics-refresh dispatch (PORT-1) was dropped 2026-07-07
+// (Omar) — the daily sync runs on its own schedule; the cockpit only
+// reflects it via /api/tasks/recent-runs above.

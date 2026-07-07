@@ -3,7 +3,7 @@
 **Owner:** Amzat · **Updated:** 2026-07-07 · **Source of truth for the internal-software task.**
 Requirements are R1–R12 in `docs/REQUIREMENTS-ONE-PAGER.md` (Omar-approved, Rev 2). This file tracks execution against them.
 
-**Headline:** 11 of 12 requirements DONE and live. The only remaining build is **R11 (actions from the UI / "Build-5")**. Everything else left is short ops/input items, not development.
+**Headline:** ALL 12 requirements DONE and live. R11 (actions from the UI) shipped as see + approve/deny + order-request; the cockpit approves, the email-infra plugin's existing supervised/daily runs execute. Execute-now dispatch (5.2) + the manual data Refresh (PORT-1) were **dropped 2026-07-07 (Omar)** — no cockpit→cloud dispatch, no repo secrets needed. Remaining work is short ops/input items + housekeeping, not development.
 
 ---
 
@@ -43,8 +43,10 @@ Nothing mid-build. R7 (the last requirement revision) closed today. The board is
 
 - **5.0 — Decisions panel (read-only) · ✅ SHIPPED (`<this commit>`).** Per-client panel on the Mailboxes tab surfacing `sp_decisions` (needs-a-decision / approved-awaiting-run / recently-resolved) with type, payload summary, projected cost, age, approver. Cylindo's 2 open order decisions now show in the cockpit instead of Slack.
 - **5.1 — Approve/deny + order request · ✅ SHIPPED.** In-app Approve/Deny writes the SAME `status` the Slack button writes (idempotent: JS guard + optimistic lock; NEVER spends — placement stays supervised). "Request order" raises a deduped `order_mailboxes` proposal. **Correction from discovery:** "swap in reserves" is NOT a decision (swaps fire from `handle-burn` reading `lifecycle_status='burnt'`), so it's built as a **dark-flagged** "flag as burnt → queue swap" (`FLAGS.infraSwapEscalate=false`) — it writes plugin lifecycle state, a boundary beyond decision-writes, enabled on explicit sign-off. Verified: tsc clean, e2e 8/8, synthetic write-path resolve-once proven + cleaned up.
-- **5.2 — Execute-now dispatch · TODO.** Approved decision → dispatch the infra routine via the PORT-1 GitHub-Actions pattern so it runs immediately instead of waiting for the daily cron; poll + surface result. **Prereq: PORT-1 secrets (item C1).**
-- **5.3 — Guardrails + close-out · TODO.** Spend ceiling + double-confirm on anything that charges (fail-closed, matching the order-engine audit rule); demo to Omar. (Decision-approve can't spend, so this gates 5.2's execute path specifically.)
+- **5.2 — Execute-now dispatch · ❌ DROPPED (Omar, 2026-07-07).** The cockpit does NOT trigger execution. Approved decisions are executed by the plugin's existing runs — order placement stays the deliberately-supervised `place-order`/order-engine step (Omar-gated), lifecycle_correction auto-runs on the daily routine. This preserves the one-actor safety model and needs zero secrets. The manual data Refresh (PORT-1) was dropped with it — button + `/api/analytics/refresh` route removed; the daily sync is unaffected.
+- **5.3 — Guardrails · N/A.** Only gated 5.2's execute path, which is gone. What shipped (approve/deny) cannot spend, so no spend-guardrail is needed in the cockpit.
+
+**R11 is COMPLETE.** Cockpit = see + approve; plugin = execute. The dark `infraSwapEscalate` flag stays off (Omar, 2026-07-07).
 
 **Acceptance:** an operator can, from the Mailboxes tab, see all pending infra decisions, approve/deny one, and (for lifecycle) see it execute — without opening Slack or a terminal; nothing spends without an explicit money-confirm.
 

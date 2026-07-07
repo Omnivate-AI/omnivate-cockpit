@@ -7,12 +7,9 @@ import {
   MailCheck,
   MessageCircle,
   History,
-  RefreshCw,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { expectedFactDate } from "@/components/shared/data-as-of"
-import { toast } from "sonner"
 import type { LucideIcon } from "lucide-react"
 
 interface RecentRun {
@@ -103,16 +100,15 @@ function FreshnessRow({
 /**
  * Data-freshness panel (SHELL-4 / DEF-5). Reports the signals that actually
  * feed this app: the smartlead-perf daily sync (sp_sync_runs → daily facts)
- * and the live webhook capture (sp_send_events / sp_replies). The Refresh
- * button is PORT-1 — it dispatches the perf-sync GitHub Actions workflow;
- * progress shows up here as the new sync run lands and completes.
+ * and the live webhook capture (sp_send_events / sp_replies). Read-only —
+ * the manual "Refresh" dispatch (PORT-1) was dropped 2026-07-07 (Omar); the
+ * daily sync runs on its own schedule and this panel just reflects it.
  */
 export function SyncStatusWidget() {
   const [runs, setRuns] = useState<RecentRun[]>([])
   const [freshness, setFreshness] = useState<FreshnessPayload | null>(null)
   const [error, setError] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  const [dispatching, setDispatching] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -137,31 +133,6 @@ export function SyncStatusWidget() {
     const interval = setInterval(fetchData, 60_000)
     return () => clearInterval(interval)
   }, [fetchData])
-
-  const handleRefresh = useCallback(async () => {
-    if (dispatching) return
-    setDispatching(true)
-    try {
-      const res = await fetch("/api/analytics/refresh", { method: "POST" })
-      const data = (await res.json().catch(() => ({}))) as {
-        message?: string
-        error?: string
-      }
-      if (res.status === 202) {
-        toast.success(data.message ?? "Sync dispatched")
-        // Pull the new run into view as soon as it registers
-        setTimeout(fetchData, 20_000)
-      } else if (res.status === 501) {
-        toast.info(data.error ?? "Sync dispatch not configured yet")
-      } else {
-        toast.error(data.error ?? "Sync dispatch failed")
-      }
-    } catch {
-      toast.error("Sync dispatch failed")
-    } finally {
-      setDispatching(false)
-    }
-  }, [dispatching, fetchData])
 
   const latestRun = runs[0] ?? null
   const syncTime = latestRun?.finishedAt ?? latestRun?.startedAt ?? null
@@ -189,22 +160,7 @@ export function SyncStatusWidget() {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">Data Freshness</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1.5 text-xs"
-            disabled={dispatching}
-            onClick={handleRefresh}
-            title="Run the Smartlead → Supabase sync now"
-          >
-            <RefreshCw
-              className={`h-3 w-3 ${dispatching ? "animate-spin" : ""}`}
-            />
-            Refresh
-          </Button>
-        </div>
+        <CardTitle className="text-base">Data Freshness</CardTitle>
         <p className="text-xs text-muted-foreground">
           Daily sync + live webhook capture
         </p>
