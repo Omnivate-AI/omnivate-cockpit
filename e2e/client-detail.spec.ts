@@ -59,6 +59,31 @@ test("mailboxes tab renders all lifecycle groups (resting-crash regression)", as
   // INFRA-3 domains table + INFRA-5 rotation line
   await expect(page.getByText(/Domains \(\d+\)/).first()).toBeVisible()
   await expect(page.getByText("Weekly rotation:").first()).toBeVisible()
+  // Build-5 (R11): rotation-group capacity card + infra decisions panel
+  await expect(page.getByText("Rotation Groups").first()).toBeVisible()
+  await expect(page.getByText("Infrastructure Decisions").first()).toBeVisible()
+})
+
+test("infra decisions panel is actionable — approve/deny present when a decision is open (Build-5 R11)", async ({
+  page,
+}) => {
+  // Read-only: asserts the panel + (for cylindo, which has open order
+  // decisions) the Approve/Deny controls render. Never clicks them — those
+  // flip live email-infra decisions.
+  await page.goto(`/clients/${CLIENT}?tab=mailboxes`)
+  await expect(page.getByText("Infrastructure Decisions").first()).toBeVisible({
+    timeout: 60_000,
+  })
+  // The panel either shows the empty state or a needs-decision list; never
+  // blank. .first() keeps the or-chain out of strict-mode when several
+  // elements (heading + multiple Approve buttons) match at once.
+  await expect(
+    page
+      .getByText("No open infrastructure decisions")
+      .or(page.getByText(/Needs a decision/))
+      .or(page.getByRole("button", { name: /Approve/ }))
+      .first()
+  ).toBeVisible()
 })
 
 test("campaigns tab shows lifetime stats with sync label", async ({

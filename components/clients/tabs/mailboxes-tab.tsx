@@ -7,6 +7,9 @@ import {
   getClientRotationCapacity,
 } from "@/lib/queries/mailboxes"
 import { RotationCapacityCard } from "@/components/mailboxes/rotation-capacity-card"
+import { getClientDecisions, summarizeDecisionPayload } from "@/lib/queries/decisions"
+import { DecisionsPanel, type DecisionRow } from "@/components/mailboxes/decisions-panel"
+import { FLAGS } from "@/lib/flags"
 import { MailboxInventoryTable } from "@/components/mailboxes/mailbox-inventory-table"
 import { MailboxHealthChart } from "@/components/mailboxes/mailbox-health-chart"
 import { CapacityKPICards } from "@/components/mailboxes/capacity-kpi-cards"
@@ -30,7 +33,7 @@ interface MailboxesTabProps {
 }
 
 export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
-  const [mailboxes, healthTrend, capacity, masterInfo, personas, blacklist, orders, lifecycleHistory, domains, rotation] = await Promise.all([
+  const [mailboxes, healthTrend, capacity, masterInfo, personas, blacklist, orders, lifecycleHistory, domains, rotation, decisions] = await Promise.all([
     getClientMailboxInventory(clientSlug),
     getClientDomainHealthTrend(clientSlug, 30),
     getClientCapacitySnapshot(clientSlug),
@@ -41,7 +44,26 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
     getClientLifecycleHistory(clientSlug, 30),
     getClientDomains(clientSlug),
     getClientRotationCapacity(clientSlug),
+    FLAGS.infraDecisions ? getClientDecisions(clientSlug) : Promise.resolve(null),
   ])
+
+  // Precompute payload summaries server-side so the client panel carries no
+  // server-only imports (Build-5 5.0/5.1).
+  const toRow = (d: import("@/lib/queries/decisions").ClientDecision): DecisionRow => ({
+    id: d.id,
+    decision_type: d.decision_type,
+    severity: d.severity,
+    title: d.title,
+    rationale: d.rationale,
+    summary: summarizeDecisionPayload(d),
+    estimated_cost_usd: d.estimated_cost_usd,
+    status: d.status,
+    approved_by: d.approved_by,
+    approved_at: d.approved_at,
+    executed_at: d.executed_at,
+    error: d.error,
+    created_at: d.created_at,
+  })
 
   const blacklistByDomain = Object.fromEntries(
     blacklist.rows.map((r) => [r.domain, r.status])
@@ -79,6 +101,19 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
       {/* A/B rotation groups: Group A alone / Group B alone / whole pool /
           reserve bench, each with real emails-per-day capacity (Omar 07-06) */}
       <RotationCapacityCard data={rotation} />
+
+      {/* Build-5 (R11): infra decisions raised by the email-infra engines,
+          approvable in-app (same status the Slack button writes; never spends) */}
+      {FLAGS.infraDecisions && decisions && (
+        <DecisionsPanel
+          client={clientSlug}
+          needsAction={decisions.needsAction.map(toRow)}
+          inFlight={decisions.inFlight.map(toRow)}
+          resolved={decisions.resolved.map(toRow)}
+          canApprove={FLAGS.infraDecisionApprove}
+          canRequestOrder={FLAGS.infraOrderRequest}
+        />
+      )}
 
       {/* Lifecycle breakdown + Master inbox */}
       <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
