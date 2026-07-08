@@ -10,8 +10,11 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "Deliverability Hub",
-  description: "Email deliverability management platform",
+  // Renamed from "Deliverability Hub" per Omar (07-07 standup): give it a
+  // real name + the Omnivate mark. Next auto-serves app/icon.png as the
+  // favicon (the brain-circuit mark cropped from the Omnivate logo).
+  title: "Omnivate Cockpit",
+  description: "Omnivate internal control tower — client performance & email infrastructure",
 }
 
 export default function RootLayout({
