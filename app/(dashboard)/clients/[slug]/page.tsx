@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import { ClientHeader } from "@/components/clients/client-header"
 import { ClientTabs } from "@/components/clients/client-tabs"
 import { OverviewTab } from "@/components/clients/tabs/overview-tab"
+import { InterestedLeadsTab } from "@/components/clients/tabs/interested-leads-tab"
 import { CampaignsTab } from "@/components/clients/tabs/campaigns-tab"
 import { MailboxesTab } from "@/components/clients/tabs/mailboxes-tab"
 import { AlertsTab } from "@/components/clients/tabs/alerts-tab"
@@ -112,6 +113,7 @@ export default async function ClientPage({ params }: ClientPageProps) {
             </p>
           )
         }
+        interested={<InterestedLeadsTab clientSlug={client} />}
         campaigns={<CampaignsTab clientSlug={client} />}
         pipelines={<PipelinesTab clientSlug={client} />}
         mailboxes={<MailboxesTab clientSlug={client} />}

@@ -6,6 +6,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
 const TAB_CONFIG = [
   { value: "overview", label: "Overview" },
+  { value: "interested", label: "Interested Leads" },
   { value: "campaigns", label: "Campaigns" },
   { value: "pipelines", label: "Pipelines" },
   { value: "mailboxes", label: "Mailboxes" },
@@ -18,6 +19,7 @@ export type TabValue = (typeof TAB_CONFIG)[number]["value"]
 
 export interface ClientTabsProps {
   overview?: ReactNode
+  interested?: ReactNode
   campaigns?: ReactNode
   pipelines?: ReactNode
   mailboxes?: ReactNode
@@ -28,6 +30,7 @@ export interface ClientTabsProps {
 
 export function ClientTabs({
   overview,
+  interested,
   campaigns,
   pipelines,
   mailboxes,
@@ -57,6 +60,7 @@ export function ClientTabs({
 
   const tabContent: Record<TabValue, ReactNode> = {
     overview: overview ?? <p className="text-sm text-muted-foreground py-8">Overview tab content coming soon</p>,
+    interested: interested ?? <p className="text-sm text-muted-foreground py-8">Interested leads content coming soon</p>,
     campaigns: campaigns ?? <p className="text-sm text-muted-foreground py-8">Campaigns tab content coming soon</p>,
     pipelines: pipelines ?? <p className="text-sm text-muted-foreground py-8">Pipelines tab content coming soon</p>,
     mailboxes: mailboxes ?? <p className="text-sm text-muted-foreground py-8">Mailboxes tab content coming soon</p>,

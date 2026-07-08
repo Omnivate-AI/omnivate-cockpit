@@ -20,6 +20,7 @@ test("overview tab renders header, live strip and KPI grid", async ({
   await expect(page.getByText("By recipient inbox").first()).toBeVisible()
   for (const tab of [
     "Overview",
+    "Interested Leads",
     "Campaigns",
     "Pipelines",
     "Mailboxes",
@@ -29,6 +30,21 @@ test("overview tab renders header, live strip and KPI grid", async ({
   ]) {
     await expect(page.getByRole("tab", { name: tab })).toBeVisible()
   }
+})
+
+test("interested leads tab renders table or explicit empty state", async ({
+  page,
+}) => {
+  await page.goto(`/clients/${CLIENT}?tab=interested`)
+  await expect(page.getByText("Cylindo").first()).toBeVisible({ timeout: 60_000 })
+  // Either the interested-leads table (count chip) or the explicit empty
+  // state — never a blank tab. Structure-only; rows drift with real replies.
+  await expect(
+    page
+      .getByText(/interested lead/i)
+      .first()
+      .or(page.getByText(/No Interested Leads Yet/i).first())
+  ).toBeVisible()
 })
 
 test("mailboxes tab renders all lifecycle groups (resting-crash regression)", async ({
