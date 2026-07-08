@@ -109,7 +109,7 @@ export function Sidebar({ alertCount = 0, clients, onNavigate }: SidebarProps) {
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
           <Mail className="h-4 w-4" />
         </div>
-        <span className="text-base font-semibold text-foreground">Deliverability Hub</span>
+        <span className="text-base font-semibold text-foreground">Omnivate Cockpit</span>
       </div>
 
       {/* Top nav: Command Center */}

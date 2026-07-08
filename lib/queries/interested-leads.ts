@@ -3,11 +3,13 @@ import { createServerClient } from "@/lib/supabase/server"
 import { resolveClientSlugs } from "@/lib/queries/clients"
 
 // Interested Leads (Omar 2026-07-08) — the positive email replies per client.
-// Source: vw_cockpit_interested_leads (migration 013) = sp_replies category
-// 'Interested' (perf-plugin-fed, uniform across clients) joined to the
-// per-client lead table for detail. Supabase columns only — no Intent / no
-// SDR calling columns (Omar 07-08). Auto-updates as the perf plugin
-// categorises new replies. Small (tens of rows) — live view, no snapshot.
+// Reads cockpit_interested_leads, a small table refreshed daily (09:14 UTC)
+// by fn_cockpit_snapshot_interested_leads from vw_cockpit_interested_leads
+// (= sp_replies category 'Interested', perf-fed + uniform across clients,
+// joined per-client to the lead table). Materialized because the live view
+// is 6-8s/client (lower(email) scan over 90k-260k lead rows) — migration
+// 013/014/015. Supabase columns only, no Intent / no SDR calling (Omar
+// 07-08). Daily cadence matches the app's 24h freshness bar.
 
 export interface InterestedLead {
   client: string
@@ -32,7 +34,7 @@ export const getClientInterestedLeads = cache(
     const slugs = await resolveClientSlugs(client)
 
     const { data } = await supabase
-      .from("vw_cockpit_interested_leads")
+      .from("cockpit_interested_leads")
       .select("*")
       .in("client", slugs)
       .order("date_converted", { ascending: false, nullsFirst: false })
