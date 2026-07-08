@@ -24,8 +24,11 @@ Each was verified when it shipped (e2e green · live data reconciled to the digi
 | R9 | Ready Bank — TAM → verified → LinkedIn-only → in-campaign → available; Cylindo 5,597 available | `60c8134` / mig 010 |
 | R10 | Mailboxes: Group A / all / reserve capacity, "sending this week" badge | `60c8134` / mig 011 |
 | R12 | Parked items (placement-test alerts, live sync, extras) — intentionally not built | — |
+| +favicon | Omnivate favicon (mark cropped from logo → `app/icon.png`) + rename "Deliverability Hub" → **Omnivate Cockpit** (Omar 07-07 standup) | `039d214` |
 
 Also this session: the two at-risk clients investigated (Cylindo real burn on `digitalcylindopro.com`; AP = stale mirror row, not a burn), and the "why weren't we flagged" root cause fixed (burn was detected but drowned in maintenance noise → tier rebuild).
+
+**Ready Bank proof-check (Omar 07-07) — finding + decision.** The Ready Bank counts off `v_{client}_tam`, which gates on `lead_status` (reachability), NOT `qualification_decision`. For Cylindo the reachable set (~86k on the snapshot / ~91k live) includes ~28k leads with NO qualification decision recorded — the schema-adherence gap Omar suspected. "Verified emails" includes ~11.6k not-qualified; "in campaign" uses `smartlead_uploaded` (37,102) vs the canonical actually-emailed view (35,294) vs a stale column (21,121). **Decision (07-07): leave the Ready Bank as-is, explain the caveat on camera in the Loom, and do the cockpit-side clean-up (relabel "Total reachable" + true "Qualified" line + switch to the actually-emailed view) AFTER this feedback round. The deeper fix — the 28k null-decision Cylindo leads — is Omar's schema revalidation.** Talking track in `LOOM-WALKTHROUGH-SCRIPT.md` §4; logged as board #20 (deferred).
 
 ---
 

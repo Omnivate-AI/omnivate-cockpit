@@ -32,6 +32,7 @@ Two ground rules you set:
 **R8 — Burnt / at-risk visibility.** Burnt and at-risk mailboxes must be visible and correct: when boxes are burnt the dashboard says so, per client, with what to do about it — no more "action required" cards reading zero.
 
 **R9 — Ready Bank (replaces the lead-pipeline section).** Per client: total qualified TAM in our database → how many have a **verified working email** → how many are **LinkedIn-only** (no email) → how many we've **already contacted or have in a campaign** (defined as uploaded to Smartlead — contacted or queued) → and the headline number: how many are **still available to reach out to**.
+> *Known caveat (07-07, being left as-is on purpose and explained in the Loom):* the "total" is built on **reachability** (`lead_status`), not strictly the **`qualification_decision`** column — for Cylindo ~a third of these leads never had a qualification decision recorded, so "Qualified" over-reads. The numbers are honest for "who can we reach." Clean-up = the Cylindo schema revalidation, deferred until after this feedback round.
 
 **R10 — Mailbox breakdown & capacity.** The mailboxes view shows all mailboxes, correctly broken down, with sending capacity answered three ways: **Group A alone** (not A+B), **all mailboxes together**, and the **reserves** — how many we have and what their capacity would be.
 
@@ -41,4 +42,8 @@ Two ground rules you set:
 
 ---
 
-*If this matches your intent, R11 is the next build per your prioritisation.*
+## Status (07-07)
+
+All 12 requirements are **built and live**, plus the Omnivate favicon + rename to **Omnivate Cockpit**. Two things were deliberately **dropped** by decision (07-07): the manual data-refresh button and having the dashboard trigger execution — the cockpit approves, the email-infra system's own supervised runs execute. R11's "swap in reserves" action is built but **switched off** pending sign-off.
+
+For the screen-by-screen walkthrough (each action point → how fixed → where in the UI) **and the work done beyond these 12** (data foundation, the alert-noise root-cause fix, the two at-risk investigations, the morning jobs, testing, the dropped refresh), see **`LOOM-WALKTHROUGH-SCRIPT.md`**. These three docs are aligned — the action points match the UI.

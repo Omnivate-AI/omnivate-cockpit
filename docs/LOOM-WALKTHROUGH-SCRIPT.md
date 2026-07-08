@@ -1,21 +1,23 @@
 # Omnivate Cockpit — Loom Walkthrough Script
 
 **For:** Amzat's Loom to Omar · **Date:** 2026-07-07 · **App:** https://omnivate-cockpit.vercel.app
-**How to use this:** it's laid out as a recording route — go screen by screen, top to bottom. For each item you get **what Omar asked → how it was fixed (plain + the mini technical step) → what to show on screen.** Demo client throughout is **Cylindo** (richest data). Every action point is tagged to its requirement (R1–R12) so Omar can tick them off.
+**How to use this:** it's a recording route — go screen by screen, top to bottom. Each item gives you **what Omar asked → how it was fixed (plain + the mini technical step) → what to show on screen.** Demo client throughout is **Cylindo** (richest data). Every action point is tagged to its requirement (R1–R12) so Omar can tick them off. **Part 7 covers the extra work done beyond the 12 action points** — worth talking through too.
 
-> ⚠️ **One thing to settle before you hit record — the Ready Bank (R9).** A proof-check found a labelling issue (details at the very bottom). Don't film the Ready Bank "Qualified" number until we've decided how to handle it. Everything else is solid to film now.
+> **On numbers:** everything refreshes daily, so read whatever's on screen live — the figures below are this-week examples so you know what "right" looks like.
+> **On the Ready Bank:** we're deliberately leaving it as-is and *explaining* the labelling quirk on camera (not hiding or rushing a fix) — the exact talking track is in §4. The fix comes after this review, once we've gathered feedback.
 
 ---
 
 ## The recording route (click-path)
-1. **Browser tab** — favicon + name (5 sec opener)
-2. **Command Center** (home) — runway sliders · actionable-alerts KPI · send-targets removed · at-risk visibility
+1. **Browser tab** — favicon + name
+2. **Command Center** (home) — runway sliders · actionable-alerts KPI · send-targets removed · freshness
 3. **Alerts page** — actionable vs maintenance tiers · the two new alerts
-4. **Cylindo → Overview tab** — Ready Bank *(hold — see note)*
+4. **Cylindo → Overview tab** — Ready Bank (with the honest explanation)
 5. **Cylindo → Campaigns tab** — active/past · Primary/Follow-up/Referral · Mark done
-6. **Cylindo → Mailboxes tab** — capacity breakdown · burnt "Needs Action" · Decisions panel (approve/deny)
+6. **Cylindo → Mailboxes tab** — capacity breakdown · burnt "Needs Action" · Decisions panel
+7. **Talk-through** — the work done beyond the action points
 
-## Requirement → where to show it (quick map)
+## Requirement → where to show it
 | Req | Show it here |
 |---|---|
 | R1 data from Supabase, daily freshness | Command Center "Data Freshness" panel |
@@ -26,125 +28,124 @@
 | R6 runway calc trustworthy | Command Center card / Overview runway gauge |
 | R7 send-floor alert | Alerts page — the PayCaptain send-floor alert |
 | R8 burnt/at-risk visible & correct | Mailboxes tab — "Needs Action" card |
-| R9 Ready Bank | Overview tab *(hold)* |
+| R9 Ready Bank | Overview tab |
 | R10 capacity breakdown | Mailboxes tab — "Rotation Groups & Capacity" |
 | R11 actions from the UI | Mailboxes tab — "Infrastructure Decisions" panel |
-| R12 parked | (nothing to show — say it's intentionally deferred) |
+| R12 parked | (say it's intentionally deferred) |
 | + favicon/rename | Browser tab |
 
 ---
 
 ## 1. Browser tab — favicon + name
-- **Asked (07-07 standup):** "We don't have the Omnivate favicon… call it something cool" (it was "Deliverability Hub").
-- **How fixed:** renamed the app to **Omnivate Cockpit** and added the Omnivate brain-circuit mark as the tab icon. *Mini technical step: cropped the square icon out of the Omnivate logo, dropped it in as the app icon, and changed the app's title text.*
-- **Show:** just point at the browser tab — the purple mark + "Omnivate Cockpit".
+- **Asked (07-07 standup):** no Omnivate favicon, and it was named "Deliverability Hub" — "call it something cool."
+- **How fixed:** renamed to **Omnivate Cockpit** with the Omnivate brain-circuit mark as the tab icon. *Mini step: cropped the square icon out of the Omnivate logo, set it as the app icon, changed the title text.*
+- **Show:** point at the browser tab — purple mark + "Omnivate Cockpit."
 
 ## 2. Command Center (home)
 
 **Per-client runway slider — R5**
-- **Asked:** on the front page, one visual read per client of how close they are to running out of leads, summed across their campaigns.
-- **How fixed:** each client card now has a bar showing completed / in-progress / not-started leads across their active primary campaigns. *Mini technical step: a saved query sums the lead stages per client, and the card draws it as a slider.*
-- **Show:** the client cards — point at Cylindo's near-empty bar.
+- **Asked:** one visual read per client of how close they are to running out of leads, summed across campaigns.
+- **How fixed:** each client card has a bar showing completed / in-progress / not-started leads across their active primary campaigns. *Mini step: a saved query sums lead stages per client; the card draws the slider.*
+- **Show:** the client cards — Cylindo's near-empty bar.
 
 **"Actionable Alerts" number — R2**
 - **Asked:** Omar didn't trust the old alert count.
-- **How fixed:** the headline number now counts only *actionable* alerts (things needing a human), not routine self-healing noise. *Mini technical step: every alert type is tagged actionable-or-maintenance, and the front-page counter only sums the actionable ones.*
-- **Show:** the "Actionable Alerts" KPI tile. Say: "Cylindo went from 28 noisy alerts to 6 real ones."
+- **How fixed:** the headline counts only *actionable* alerts, not routine self-healing noise. *Mini step: every alert type is tagged actionable-or-maintenance; the counter sums only actionable.*
+- **Show:** the "Actionable Alerts" tile — "Cylindo went from 28 noisy alerts to 6 real ones."
 
 **Send-targets chart removed — R7 (part 1)**
 - **Asked:** the old send-targets chart wasn't useful — remove it.
-- **How fixed:** deleted it. *Mini technical step: removed the component and its data call; the send-target idea came back as an alert instead (see Alerts page).*
-- **Show:** nothing to point at — mention it's gone and the target logic moved into alerts.
+- **How fixed:** deleted; the target idea came back as an alert instead (§3). *Mini step: removed the component + its data call.*
+- **Show:** nothing to point at — mention it's gone and moved into alerts.
 
-**Runway is trustworthy now — R6**
+**Runway is trustworthy — R6**
 - **Asked:** PayCaptain's runway "looked wrong."
-- **How fixed:** the math was actually right (a big lead top-up had moved it), but it was counting the wrong campaigns. Now it counts only the main (primary) campaigns and the gauge shows its own working. *Mini technical step: a saved query separates primary from follow-up/referral campaigns so runway only reflects primaries.*
-- **Show:** hover a client's runway — it reads like "N emails ÷ per-day = days."
+- **How fixed:** the math was right (a big lead top-up had moved it) but it was counting the wrong campaigns — now only primary campaigns, and the gauge shows its own working. *Mini step: a saved query separates primary from follow-up/referral.*
+- **Show:** hover a client's runway — reads like "N emails ÷ per-day = days."
 
 **Data freshness — R1**
-- **Show:** the "Data Freshness" panel — say everything is read from our own Supabase tables, refreshed once each morning; nothing calls Smartlead live.
+- **Show:** the "Data Freshness" panel — everything reads from our own Supabase tables, refreshed each morning; nothing calls Smartlead live.
 
 ## 3. Alerts page
 
 **Alerts rebuilt into tiers — R2**
 - **Asked:** strip the untrusted alert system, rebuild only what matters.
-- **How fixed:** every alert is now either **Actionable** (act now) or **Maintenance** (self-heals). The page defaults to Actionable; Maintenance is opt-in behind a filter. *Mini technical step: a single tagging rule in the database labels each alert type, and the page + all counts respect it.*
-- **Show:** the tier filter dropdown — flip between Actionable and Maintenance so Omar sees the noise is still there but hidden by default.
+- **How fixed:** every alert is **Actionable** (act now) or **Maintenance** (self-heals); page defaults to Actionable, Maintenance is behind a filter. *Mini step: one tagging rule in the database that the page + all counts respect.*
+- **Show:** flip the tier filter so Omar sees the noise still exists but is hidden by default.
 
 **Lead-runway alert — R3**
-- **Asked:** alert me when a client is about to run out of leads — primary campaigns only, and don't nag about finished ones.
-- **How fixed:** a morning check raises an alert per client based on primary-campaign runway; it clears itself when you top up, and skips campaigns you've marked done. *Mini technical step: a scheduled 09:20 job writes/clears these alerts into the alerts table.*
-- **Show:** the live alert — **"Cylindo has ~0.2 days of primary lead runway."**
+- **Asked:** alert when a client is about to run out of leads — primary campaigns only, don't nag about finished ones.
+- **How fixed:** a morning check raises one alert per client from primary-campaign runway; clears itself on top-up; skips campaigns marked done. *Mini step: a scheduled 09:20 job writes/clears these.*
+- **Show:** the live alert — "Cylindo has ~0.2 days of primary lead runway."
 
 **Send-floor alert — R7 (part 2)**
 - **Asked (revision):** keep a send target after all — a set minimum per client, alert if weekday sending drops below it, ignore weekends.
-- **How fixed:** a morning check compares yesterday's sends to each client's minimum, does nothing on weekends, and clears itself on recovery. The number is editable per client. *Mini technical step: a scheduled 09:25 job that skips Sat/Sun.*
-- **Show:** the live alert — **"PayCaptain sent 1,555 vs the 3,000/day minimum."**
+- **How fixed:** a morning check compares yesterday's sends to each client's minimum, skips weekends, clears on recovery; number editable per client. *Mini step: a scheduled 09:25 job that does nothing on Sat/Sun.*
+- **Show:** the live alert — "PayCaptain sent 1,555 vs the 3,000/day minimum."
 
-## 4. Cylindo → Overview tab
+## 4. Cylindo → Overview tab — Ready Bank (R9)
 
-**Ready Bank — R9** — ⚠️ **hold; see the verification note at the bottom before filming the numbers.**
 - **Asked:** per client, how many good leads are left to reach out to.
-- **How fixed:** replaced the confusing old funnel with a Ready Bank showing total leads → verified emails → LinkedIn-only → already in a campaign → **still available to contact**. *Mini technical step: the counts are tallied once each morning and saved, so the page loads instantly instead of scanning 90,000 rows.*
-- **Show (safe bits):** the layout and the "available" headline concept. **Do not narrate the "Qualified" figure yet** — see note.
+- **How fixed:** replaced the confusing old funnel with a Ready Bank: total leads → verified emails → LinkedIn-only → already in a campaign → **still available to contact**. *Mini step: the counts are tallied once each morning and saved, so the page loads instantly instead of scanning ~90,000 rows.*
+- **Show (Cylindo, today's snapshot):** ~86,431 total · 36,928 verified email · 8,434 LinkedIn-only · 35,834 in a campaign · **5,597 still available.**
+
+**Talking track — the honest caveat (say this on camera):**
+> "One thing to flag on the Ready Bank, and it's the point Omar raised: this top number is really *everyone we can still reach*, not strictly leads stamped 'qualified.' Cylindo's been through many qualification passes, and when I checked, a big chunk — roughly a third — never had a qualification decision recorded at all. So the number's honest for 'who can we reach,' but the word 'Qualified' is doing too much work. Same with 'in a campaign' — we're using the 'uploaded to Smartlead' flag, which is one of three signals that don't perfectly agree. We're leaving this exactly as-is for now on purpose, so you can see the real state; the clean-up is the Cylindo schema revalidation, which we'll do after this review."
+
+*(Reference detail, if asked — from a live check today: of the leads in the reachable set, ~60,700 carry `qualification_decision = 'qualified'` and ~28,000 carry none; "contacted" reads 37,102 by the uploaded flag vs 35,294 by the canonical actually-emailed view vs 21,121 by an older column. Numbers drift daily; the pattern is the point.)*
 
 ## 5. Cylindo → Campaigns tab
 
 **Active + past campaigns — R4**
 - **Asked:** show active *and* past campaigns, comparable.
-- **How fixed:** the tab lists everything now; past campaigns sit in a collapsible section. *Mini technical step: the query stopped filtering to only-active and the page splits them by real Smartlead status.*
-- **Show:** expand the "Past Campaigns" section.
+- **How fixed:** lists everything now; past campaigns in a collapsible section. *Mini step: query stopped filtering to only-active; page splits by real Smartlead status.*
+- **Show:** expand "Past Campaigns."
 
 **Correct labels — R4**
 - **Asked:** referral campaigns were mislabelled.
-- **How fixed:** campaigns now correctly tag **Primary / Follow-up / Referral**. *Mini technical step: a saved query classifies each campaign and the chip reads from it.*
+- **How fixed:** campaigns tag correctly **Primary / Follow-up / Referral**. *Mini step: a saved query classifies each; the chip reads from it.*
 - **Show:** point at a Referral-tagged campaign.
 
 **Mark done — R4/R3**
-- **Asked:** finished campaigns kept looking active and nagging (the Design Studios case).
-- **How fixed:** a one-click "Mark done" that stops a campaign counting toward runway and alerts; reversible. *Mini technical step: the button writes an override flag the runway logic respects.*
-- **Show:** the Mark-done control on a campaign row.
+- **Asked:** finished campaigns kept looking active and nagging (Design Studios case).
+- **How fixed:** one-click "Mark done" stops a campaign counting toward runway and alerts; reversible. *Mini step: the button writes an override flag the runway logic respects.*
+- **Show:** the Mark-done control on a row.
 
 ## 6. Cylindo → Mailboxes tab
 
 **Capacity breakdown — R10**
-- **Asked:** capacity three ways — Group A alone, all mailboxes, and reserves.
-- **How fixed:** a "Rotation Groups & Capacity" card shows Group A, Group B, the whole pool, and the reserve bench, each with real emails-per-day, and badges whichever group is sending this week. *Mini technical step: a saved query groups mailboxes by their rotation group and sums their daily caps.*
-- **Show:** the card — point at the "sending this week" badge.
+- **Asked:** capacity three ways — Group A alone, all mailboxes, reserves.
+- **How fixed:** a "Rotation Groups & Capacity" card: Group A, Group B, whole pool, reserve bench, each with real emails-per-day, and a badge on whichever group sends this week. *Mini step: a saved query groups mailboxes by rotation group and sums their daily caps.*
+- **Show:** the card + the "sending this week" badge.
 
 **Burnt "Needs Action" fix — R8**
 - **Asked:** the burnt-mailbox card said zero while boxes were actually burnt.
-- **How fixed:** it now counts boxes below the health line that are *still in play*, not just ones already retired. *Mini technical step: changed the count from "officially burnt" to "below 97% and still live."*
-- **Show:** the "Needs Action" card — Cylindo shows the 2 boxes needing a swap.
+- **How fixed:** now counts boxes below the health line that are *still in play*, not just retired ones. *Mini step: changed the count from "officially burnt" to "below 97% and still live."*
+- **Show:** the "Needs Action" card — Cylindo's 2 boxes needing a swap.
 
 **Infrastructure Decisions panel — R11 (the big one)**
 - **Asked:** act from the dashboard — see a problem, press a button — instead of scrolling Slack.
-- **How fixed:** the tab now shows the email-infra system's pending decisions (e.g. "order mailboxes"), each with a plain summary, projected cost, and **Approve / Deny** buttons that do exactly what the Slack button does. Approving never spends — the actual purchase stays a separate supervised step. *Mini technical step: the cockpit reads and writes the same decisions list the email-infra engines already run on, so there's one source of truth and no second machine.*
-- **Show:** the "Infrastructure Decisions" panel with Cylindo's open order decision(s) and the Approve/Deny buttons. Mention the "swap in reserves" action is built but intentionally switched off pending sign-off.
+- **How fixed:** the tab shows the email-infra system's pending decisions (e.g. "order mailboxes"), each with a plain summary, projected cost, and **Approve / Deny** buttons that do exactly what the Slack button does. Approving never spends — the actual purchase stays a separate supervised step. *Mini step: the cockpit reads/writes the same decisions list the email-infra engines already run on — one source of truth, no second machine.*
+- **Show:** the "Infrastructure Decisions" panel with Cylindo's open order decision(s) + Approve/Deny. Mention "swap in reserves" is built but intentionally switched off pending sign-off.
 
-**Closing line for the Loom:** all 12 requirements from the review are done and live; execution of infra actions stays with the supervised email-infra runs; the only open items are ops (topping up Cylindo's leads, swapping its 2 burnt boxes) and the Ready Bank label question below.
+## 7. Beyond the action points — the extra work (talk through this)
 
----
+These weren't on the 12-item list but are part of what got done — worth covering so Omar sees the full picture:
 
-## ⚠️ Ready Bank verification note (R9) — the proof-check Omar asked for
+- **Everything runs off our own data (R1 foundation).** The whole app reads the shared Supabase tables our Smartlead + email-infra systems keep updated — no live Smartlead calls at all. That's what makes it fast and reliable.
+- **Why the alert rebuild mattered — a real miss it fixed.** When I investigated Cylindo, the system *had* detected the burning mailboxes days earlier — the alert was just buried under ~20 routine maintenance alerts. The tiering (§3) is the permanent fix so a real problem can't drown in noise again.
+- **The two at-risk clients Omar pointed at, investigated.** Cylindo = a *real* burn (two mailboxes on one domain still sending at 81–82%). Acceleration Partners = *not* a burn — a stale data row that hadn't updated since mid-June. Both now visible on the Mailboxes tab.
+- **Three automatic morning jobs** keep it current: the lead-runway check, the Ready Bank counts, and the send-floor check — so the dashboard is always accurate to within a day (the bar Omar set).
+- **How it was checked.** Every change was run through a code check, an automated robot that clicks through the live site, and a numbers cross-check against the database — the final pass ran against the real production site and passed.
+- **Two things we deliberately dropped (07-07).** The manual "refresh" button and having the dashboard trigger execution — cut on purpose so there's one safe path: the cockpit approves, and the email-infra system's own supervised runs do the actual work. Nothing that spends money runs from the dashboard.
+- **The paperwork.** The requirements one-pager (Omar-approved), an execution tracker, and this script — all kept in the project so anyone can pick it up.
 
-I checked exactly how the Ready Bank counts Cylindo and found the thing Omar suspected — the lead schema hasn't been fully adhered to, so one label overstates. **The numbers are correct for what they measure; the word "Qualified" is the problem.**
-
-**What it's built on:** the Ready Bank reads Cylindo's `v_cylindo_tam` view. That view decides who's "in" using **`lead_status`** (not disqualified, or disqualified only for an email reason) — it does **not** filter on the actual **`qualification_decision`** column.
-
-**The finding (live Cylindo numbers today):**
-- Ready Bank "Qualified (TAM)" = **91,253**. But only **60,713** of those actually have `qualification_decision = 'qualified'`. The rest: **28,043 were never given a qualification decision at all** (blank), 2,283 not-qualified, ~200 other. → So "Qualified" is overstated by ~30k; that blank-decision 28k is the schema gap Omar flagged.
-- "Verified emails" = 39,409, but **11,660 of those aren't marked qualified** either.
-- "In a campaign" — I used the "uploaded to Smartlead" flag (**37,102**). There are two other signals that disagree: the canonical "actually emailed" view says **35,294**, and an older `actually_emailed` column says **21,121** (looks like a stale snapshot). Per our own rules the live "actually emailed" view (35,294) is the one to trust for "contacted."
-
-**What I recommend (cockpit-side, safe, doesn't touch the databases Omar wants to revalidate):**
-1. Relabel the big number **"Total reachable (TAM)"** and add a separate true **"Qualified"** line using `qualification_decision = 'qualified'`.
-2. Switch "in a campaign / contacted" to the canonical **actually-emailed view**.
-3. Leave the deeper fix — the 28k Cylindo leads with no qualification decision — as the schema-revalidation Omar owns (context, not action now).
+**Closing line:** all 12 requirements are done and live, plus the favicon and the under-the-hood work; the only open items are the Cylindo ops (lead top-up + 2 burnt-box swaps) and the Ready Bank clean-up, which we're doing after this feedback round.
 
 ---
 
-## Clarifying questions before I go further
-1. **Ready Bank:** want me to apply the 2 cockpit-side fixes above (relabel + add true Qualified + use the actually-emailed view) **before** you film — so the Loom shows correct labels — or leave it and you'll caveat it verbally?
-2. **App name:** "Omnivate Cockpit" good, or does Omar want a different "something cool"?
-3. **Loom scope:** this script covers the internal-software requirements. Do you also want the two ops findings (Cylindo lead top-up + 2 burnt boxes) in the video, or keep those separate?
+## Decisions locked (07-07)
+- **App name:** Omnivate Cockpit — keeping it.
+- **Ready Bank:** leave as-is, explain the caveat on camera, fix after feedback.
+- **Loom scope:** everything top-to-bottom (action points + the Part 7 extras).
+- **Docs:** this script, the one-pager (R1–R12), and the execution tracker are aligned — action points match the UI.
