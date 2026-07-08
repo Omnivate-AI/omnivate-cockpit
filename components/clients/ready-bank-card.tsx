@@ -44,7 +44,7 @@ export function ReadyBankCard({ data }: { data: ReadyBankRow | null }) {
           <DataAsOf mode="facts" factDate={data.snapshot_date} />
         </div>
         <p className="text-xs text-muted-foreground">
-          Qualified leads in our database and how many we can still contact
+          Leads in our database and how many we can still contact
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -85,12 +85,31 @@ export function ReadyBankCard({ data }: { data: ReadyBankRow | null }) {
           </div>
         </div>
 
-        {/* The four numbers, each explained */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {/* The numbers, each explained. "Total reachable" = everyone not
+            ruled out (lead_status); "Qualified" = only those actually
+            stamped qualification_decision='qualified' (migration 016). */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <ReadyBankStat
             value={data.qualified_total}
-            label="Qualified (TAM)"
-            hint="All qualified contacts in the database"
+            label="Total reachable"
+            hint="Everyone we haven't ruled out (incl. LinkedIn-only)"
+          />
+          {/* Only meaningful for clients that gate on qualification_decision
+              (cylindo/AP). paycaptain populates it barely (151) and omnivate
+              lacks the column — they qualify via other fields — so show n/a
+              rather than a misleading near-zero. Schema drift Omar owns. */}
+          <ReadyBankStat
+            value={
+              data.qualified > 0 && data.qualified >= data.qualified_total * 0.05
+                ? data.qualified
+                : "n/a"
+            }
+            label="Qualified"
+            hint={
+              data.qualified > 0 && data.qualified >= data.qualified_total * 0.05
+                ? "Actually passed qualification"
+                : "This client qualifies via other fields"
+            }
           />
           <ReadyBankStat
             value={data.email_verified}
@@ -118,14 +137,14 @@ function ReadyBankStat({
   label,
   hint,
 }: {
-  value: number
+  value: number | string
   label: string
   hint: string
 }) {
   return (
     <div className="rounded-md bg-muted/50 px-3 py-2">
       <div className="text-lg font-semibold tabular-nums">
-        {value.toLocaleString()}
+        {typeof value === "number" ? value.toLocaleString() : value}
       </div>
       <div className="text-[11px] font-medium">{label}</div>
       <div className="text-[10px] text-muted-foreground">{hint}</div>

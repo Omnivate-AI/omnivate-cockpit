@@ -11,7 +11,8 @@ import { resolveClientSlugs } from "@/lib/queries/clients"
 export interface ReadyBankRow {
   client: string
   snapshot_date: string
-  qualified_total: number
+  qualified_total: number // reachable universe (lead_status-based) — UI: "Total reachable"
+  qualified: number // actually qualification_decision='qualified' (migration 016)
   email_verified: number
   linkedin_only: number
   in_campaign: number
@@ -30,7 +31,7 @@ export const getClientReadyBank = cache(
     const { data } = await supabase
       .from("cockpit_ready_bank_daily")
       .select(
-        "client, snapshot_date, qualified_total, email_verified, linkedin_only, in_campaign, available_email"
+        "client, snapshot_date, qualified_total, qualified, email_verified, linkedin_only, in_campaign, available_email"
       )
       .in("client", slugs)
       .order("snapshot_date", { ascending: false })
@@ -49,6 +50,7 @@ export const getClientReadyBank = cache(
       client,
       snapshot_date: rows[0].snapshot_date,
       qualified_total: 0,
+      qualified: 0,
       email_verified: 0,
       linkedin_only: 0,
       in_campaign: 0,
@@ -56,6 +58,7 @@ export const getClientReadyBank = cache(
     }
     for (const r of rows) {
       base.qualified_total += r.qualified_total ?? 0
+      base.qualified += r.qualified ?? 0
       base.email_verified += r.email_verified ?? 0
       base.linkedin_only += r.linkedin_only ?? 0
       base.in_campaign += r.in_campaign ?? 0
