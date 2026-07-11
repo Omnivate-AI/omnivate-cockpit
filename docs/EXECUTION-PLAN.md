@@ -3,6 +3,8 @@
 **Owner:** Amzat · **Updated:** 2026-07-07 · **Source of truth for the internal-software task.**
 Requirements are R1–R12 in `docs/REQUIREMENTS-ONE-PAGER.md` (Omar-approved, Rev 2). This file tracks execution against them.
 
+> **V2 (2026-07-11):** Omar delivered his full-app review → the second iteration is planned and tracked in **`docs/V2-ITERATION-PLAN.md`** (9 phases). This file remains the V1 record; V2 sessions start from the V2 doc.
+
 **Headline:** ALL 12 requirements DONE and live. R11 (actions from the UI) shipped as see + approve/deny + order-request; the cockpit approves, the email-infra plugin's existing supervised/daily runs execute. Execute-now dispatch (5.2) + the manual data Refresh (PORT-1) were **dropped 2026-07-07 (Omar)** — no cockpit→cloud dispatch, no repo secrets needed. Remaining work is short ops/input items + housekeeping, not development.
 
 ---
