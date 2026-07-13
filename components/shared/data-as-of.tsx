@@ -46,6 +46,16 @@ function fmtSyncTime(iso: string): string {
 }
 
 /**
+ * Compact sync stamp for the combined "Data as of X · synced Y" line:
+ * time-only when the sync ran today (UTC), full date+time otherwise so a
+ * stale timestamp can never read as this morning's.
+ */
+function fmtSyncStamp(iso: string, now: Date = new Date()): string {
+  const today = now.toISOString().slice(0, 10)
+  return iso.slice(0, 10) === today ? `${iso.slice(11, 16)} UTC` : fmtSyncTime(iso)
+}
+
+/**
  * The daily facts cover the last business day (UTC): weekends produce no
  * sends by design, so on Sat/Sun/Mon the expected as-of date is Friday.
  * The morning sync lands ~07:43 UTC, so expectations shift back one day
@@ -102,11 +112,17 @@ export function DataAsOf({
     )
   } else {
     if (!factDate) return null
-    overdue = warnWhenStale && factDate.slice(0, 10) < expectedFactDate()
+    const factsBehind = factDate.slice(0, 10) < expectedFactDate()
+    const syncStale =
+      syncedAt != null &&
+      Date.now() - new Date(syncedAt).getTime() >
+        SYNC_OVERDUE_HOURS * 3_600_000
+    overdue = warnWhenStale && (factsBehind || syncStale)
     body = (
       <>
         <CalendarClock className="h-3 w-3 shrink-0" aria-hidden />
         {prefix ?? "Data as of"} {fmtFactDate(factDate)}
+        {syncedAt && <> · synced {fmtSyncStamp(syncedAt)}</>}
       </>
     )
   }

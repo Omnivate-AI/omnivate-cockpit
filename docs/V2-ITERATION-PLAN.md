@@ -6,6 +6,8 @@
 
 This is the requirements document for V2. It answers every question you raised in the walkthrough, lists the decisions we've taken (each one you can veto), and lays out the work in nine phases with clear acceptance criteria. The tracker below reflects live status as phases ship.
 
+> **✅ Approved by Omar — 2026-07-13** (ClickUp): *"These look good. I am happy for you to proceed with these requirements."* One addition from the same comment: **overhaul the client-level graphs** — e.g. a chart focused on the *number of interested replies* only, another tracking *reply rate and its change*; beyond those, use judgment (remove some, update some, add new ones) and review together after. Folded into Phase 5. No decision vetoed. Pipeline-tab question still open.
+
 ---
 
 ## Your review in one paragraph
@@ -20,11 +22,11 @@ Everything you asked us to verify gets verified fresh as part of this plan — t
 
 | Phase | What | Effort | Status |
 |---|---|---|---|
-| 1 | Declutter, branding, dead-button removal | 1 session | ☐ Not started |
+| 1 | Declutter, branding, dead-button removal | 1 session | ✅ Done (2026-07-13) |
 | 2 | The numbers audit — every metric vs Smartlead | 1 session | ☐ Not started |
 | 3 | Fix the math, definitions, links + backfill | 1–2 sessions | ☐ Not started |
 | 4 | Make it feel alive (loading states, date range) | 1 session | ☐ Not started |
-| 5 | Charts & campaigns restructure | 1 session | ☐ Not started |
+| 5 | Charts & campaigns restructure + client-graph overhaul (Omar 07-13) | 1 session | ☐ Not started |
 | 6 | Ready Bank truth, client by client | 1 session | ☐ Not started |
 | 7 | Mailboxes & orders — make actions real | 1–2 sessions | ☐ Not started |
 | 8 | Alerts that behave like alerts | 1 session | ☐ Not started |
@@ -178,14 +180,16 @@ Known workload going in (the audit will add to it):
 
 **Goal:** the chart story you described, and campaign sections that match how campaigns actually relate.
 
-- **Client Overview keeps exactly two charts:**
+**Expanded per your 07-13 comment:** the client-level graph suite gets a full pass — some charts removed, some updated, some added — our best go, then we review together. The confirmed set for the Client Overview:
   1. **Sends vs Target** — daily bars vs the target line (exists today; extended to respect the selected range and date picker).
-  2. **Reply Rate trend** — new: one interactive chart with the rate line and a hovercard showing that day's sends, replies and rate. It replaces both the "Sends & Reply Rate 14d" and "Replies 30d" charts, which repeat each other. Hovercard math verified in the audit.
+  2. **Reply Rate trend + change** — new: the rate line with its change over the period made explicit, and a hovercard showing that day's sends, replies and rate. It replaces both the "Sends & Reply Rate 14d" and "Replies 30d" charts, which repeat each other. Hovercard math verified in the audit.
+  3. **Interested replies** — new: a chart focused on the *number* of interested (positive) replies and only that, per the confirmed "Positive replies" definition.
+  Any further additions/removals at the client level are judgment calls made in this phase and flagged for your review.
 - **Campaigns tab sections:** Active shows **primary campaigns only**; **Follow-up** and **Referral** campaigns get their own sections (the classification machinery already exists). Section counts reflect the split.
 - **Compare campaigns:** overlaid day-by-day line charts for the selected campaigns (sends, reply rate), plus placement side by side — the visual you described.
 - **Placement tab:** single-test campaigns render as a visible dot with a "1 test" note instead of an invisible non-line; test rows keep the date as the differentiator.
 
-**Done when:** the overview shows exactly two charts, campaign sections split correctly for every client, compare renders overlaid series, deployed with screenshots.
+**Done when:** the overview shows the confirmed chart set (sends vs target · reply rate + change · interested replies), campaign sections split correctly for every client, compare renders overlaid series, deployed with screenshots and a change-list of graph judgment calls for your review.
 
 ---
 

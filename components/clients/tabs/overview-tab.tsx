@@ -1,4 +1,4 @@
-import { Mail, ThumbsUp, MessageCircle, Percent, Activity, AlertTriangle, ArrowRight } from "lucide-react"
+import { Mail, ThumbsUp, MessageCircle, Percent, AlertTriangle, ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { MetricCard } from "@/components/shared/metric-card"
@@ -8,16 +8,13 @@ import { RepliesChart } from "@/components/clients/replies-chart"
 import { PerformanceMetrics } from "@/components/clients/performance-metrics"
 import { ReadyBankCard } from "@/components/clients/ready-bank-card"
 import { RunwayCapacityWidget } from "@/components/clients/runway-capacity-widget"
-import { AnomalyCallouts } from "@/components/clients/anomaly-callouts"
-import { replyRateColor, healthColor, alertSeverityColor } from "@/lib/design-tokens"
-import { getClientRecentHistory, getClientAnomalyHistory, getClientSendReplyHistory, getClientReplyHistory, getClientPerformanceHistory, getTodayLive, getClientProviderSplit } from "@/lib/queries/analytics"
+import { replyRateColor, alertSeverityColor } from "@/lib/design-tokens"
+import { getClientRecentHistory, getClientSendReplyHistory, getClientReplyHistory, getClientPerformanceHistory, getClientProviderSplit } from "@/lib/queries/analytics"
 import { getClientRecipientSplit } from "@/lib/queries/portfolio"
-import { TodayLiveStrip } from "@/components/shared/today-live-strip"
 import { ProviderSplitCard } from "@/components/clients/provider-split-card"
-import { getClientAlerts, resolveClientSlugs } from "@/lib/queries/clients"
+import { getClientAlerts } from "@/lib/queries/clients"
 import { getClientReadyBank } from "@/lib/queries/ready-bank"
 import { getClientTotalReplies } from "@/lib/queries/campaigns"
-import { detectAnomalies } from "@/lib/scoring/anomaly-detection"
 import { formatDistanceToNow } from "date-fns"
 import { SectionFreshness } from "@/components/shared/section-freshness"
 import type { ClientSnapshot } from "@/types/analytics"
@@ -36,34 +33,17 @@ export async function OverviewTab({
   config,
   alertCount,
 }: OverviewTabProps) {
-  const [history, anomalyHistory, sendReplyHistory, topAlerts, totalReplies, replyData, performanceHistory, todayLive, providerSplit, recipientSplit, childSlugs, readyBank] = await Promise.all([
+  const [history, sendReplyHistory, topAlerts, totalReplies, replyData, performanceHistory, providerSplit, recipientSplit, readyBank] = await Promise.all([
     getClientRecentHistory(clientSlug, 7),
-    getClientAnomalyHistory(clientSlug, 14),
     getClientSendReplyHistory(clientSlug, 14),
     getClientAlerts(clientSlug, false, 3),
     getClientTotalReplies(clientSlug),
     getClientReplyHistory(clientSlug, 30),
     getClientPerformanceHistory(clientSlug, 60),
-    getTodayLive(),
     getClientProviderSplit(clientSlug, 14),
     getClientRecipientSplit(clientSlug, 14),
-    resolveClientSlugs(clientSlug),
     getClientReadyBank(clientSlug),
   ])
-  const anomalies = detectAnomalies(anomalyHistory, config)
-
-  const liveRows = todayLive.filter((r) => childSlugs.includes(r.client))
-  const liveTotals = liveRows.reduce(
-    (acc, r) => ({
-      sends: acc.sends + r.sends_today,
-      replies: acc.replies + r.replies_today,
-      lastEvent:
-        !acc.lastEvent || (r.last_send_at && r.last_send_at > acc.lastEvent)
-          ? r.last_send_at
-          : acc.lastEvent,
-    }),
-    { sends: 0, replies: 0, lastEvent: null as string | null }
-  )
 
   const emailsSent = latestSnapshot?.emails_sent_count ?? null
   const positiveReplies = latestSnapshot?.positive_replies_count ?? null
@@ -73,28 +53,8 @@ export async function OverviewTab({
   const replyRateDisplay = replyRate !== null ? `${replyRate.toFixed(1)}%` : "No Data"
   const replyRateColors = replyRate !== null ? replyRateColor(replyRate) : null
 
-  // Mailbox health — use estimated_max_capacity as a proxy for active mailbox count
-  // and compute a simple health score based on whether we're hitting target
-  const maxCapacity = latestSnapshot?.estimated_max_capacity ?? 0
-  const dailyCapacity = latestSnapshot?.daily_capacity ?? 0
-  const healthValue = maxCapacity > 0 && dailyCapacity > 0
-    ? Math.round((dailyCapacity / maxCapacity) * 100)
-    : null
-  const healthDisplay = healthValue !== null ? `${healthValue}%` : "No Data"
-  const healthColors = healthValue !== null ? healthColor(healthValue) : null
-
   return (
     <div className="space-y-6">
-      {/* Intraday activity from the live webhook capture */}
-      <TodayLiveStrip
-        sendsToday={liveTotals.sends}
-        repliesToday={liveTotals.replies}
-        lastEventAt={liveTotals.lastEvent}
-      />
-
-      {/* Anomaly Callouts */}
-      <AnomalyCallouts anomalies={anomalies} />
-
       {/* Performance Metrics with Time Range Toggles */}
       <PerformanceMetrics history={performanceHistory} />
 
@@ -102,7 +62,8 @@ export async function OverviewTab({
       <div className="flex justify-end mb-1">
         <SectionFreshness factDate={latestSnapshot?.snapshot_date} />
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      {/* Mailbox summary card removed — the Mailboxes tab owns that story (V2 Phase 1) */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title="Emails Sent Yesterday"
           value={emailsSent !== null ? emailsSent.toLocaleString() : "No Data"}
@@ -123,12 +84,6 @@ export async function OverviewTab({
           value={replyRateDisplay}
           icon={Percent}
           valueColor={replyRateColors?.text}
-        />
-        <MetricCard
-          title="Mailbox Health"
-          value={healthDisplay}
-          icon={Activity}
-          valueColor={healthColors?.text}
         />
       </div>
 

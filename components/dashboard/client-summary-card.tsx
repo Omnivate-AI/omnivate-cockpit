@@ -2,9 +2,7 @@ import Link from "next/link"
 import { Bell, Rocket, Database } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { ProgressBar } from "@/components/shared/progress-bar"
-import { HealthRing } from "@/components/shared/health-ring"
 import { replyRateColor, runwayColor } from "@/lib/design-tokens"
-import { computeClientHealthScore, type ClientHealthInput } from "@/lib/scoring/client-health"
 import type { ClientConfig, ClientSnapshot } from "@/types/analytics"
 import { cn } from "@/lib/utils"
 
@@ -83,18 +81,6 @@ export function ClientSummaryCard({ config, latest, alertCount, periodDays = 1, 
       : 0
   const replyColors = replyRateColor(replyRate)
 
-  // Client health score
-  const healthInput: ClientHealthInput = {
-    avgMailboxHealth: null, // not available at summary level
-    sendAdherence: periodTarget > 0 && latest
-      ? latest.emails_sent_count / periodTarget
-      : null,
-    replyRate: latest && latest.all_time_emails_sent > 0 ? replyRate : null,
-    inboxPlacement: null, // not available at summary level
-    pendingAlerts: alertCount,
-  }
-  const healthResult = latest ? computeClientHealthScore(healthInput) : null
-
   // Runway values (keep for health status computation)
   const _runway = latest
     ? Math.min(
@@ -107,16 +93,9 @@ export function ClientSummaryCard({ config, latest, alertCount, periodDays = 1, 
     <Link href={`/clients/${config.client}`} className="block">
       <Card className="transition-all duration-200 hover:border-foreground/20 hover:-translate-y-0.5 hover:shadow-lg">
         <CardContent className="p-5 space-y-3">
-          {/* Header: name + ring + badge */}
+          {/* Header: name + status badge (health-score ring removed — V2 Phase 1, decision #2) */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-3 min-w-0">
-              {healthResult && (
-                <HealthRing
-                  score={healthResult.score}
-                  breakdown={healthResult.breakdown}
-                  size={40}
-                />
-              )}
               <h3 className="font-semibold capitalize truncate">
                 {config.display_name}
               </h3>

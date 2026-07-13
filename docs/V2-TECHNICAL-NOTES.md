@@ -17,6 +17,8 @@ Companion to `docs/V2-ITERATION-PLAN.md` (the Omar-facing requirements doc). Thi
 
 ## Decisions record
 
+**Omar approved the full requirements doc 2026-07-13 (ClickUp comment 90120240102615)** — "happy for you to proceed". Addition in the same comment: client-level graph overhaul folded into Phase 5 (interested-replies-count chart, reply-rate + change chart, judgment-call removals/updates/additions across the client graph suite, review together after). No vetoes.
+
 Confirmed by Amzat 2026-07-12 (Omar can veto via the requirements doc):
 1. Interested = `Interested` + `human_action_required` → "Positive replies", definition labeled in UI.
 2. Health score removed (client cards + client header ring).
@@ -73,3 +75,17 @@ Per Amzat: the V2 data-accuracy validation is done fresh in Phase 2 — treat pr
 ## Build log
 
 _(sessions append findings here — newest first)_
+
+### 2026-07-13 — Phase 1 shipped (declutter, branding, dead-button removal)
+
+**Omar approved the requirements doc this morning** (ClickUp comment 90120240102615) with one addition — client-level graph overhaul — folded into Phase 5 (see Decisions record above).
+
+Everything in the Phase 1 list landed:
+- **Branding:** sidebar now uses the real Omnivate mark (`app/icon.png` copied to `public/omnivate-mark.png`) + wordmark "Omnivate" (`components/layout/sidebar.tsx`).
+- **Command Center:** Today-live strip, Actionable Alerts + Sending Capacity KPI cards, health-score rings, bottom Data Freshness panel all removed. KPI grid is 4 cards. Reply-rate card is now **period replies ÷ period sends, labeled with the range** (`getGlobalKPIs` — also dropped the now-unneeded lifetime/capacity/alerts queries, 3 fewer DB hits per load). Header freshness line now reads "Data as of {day} · synced {time}" (`DataAsOf` gained `syncedAt` support in facts mode + compact `fmtSyncStamp`; `SectionFreshness` gained `synced` prop). Amber overdue pill fires on stale facts OR stale sync.
+- **Client pages:** overview lost the live strip, anomaly (send-drop) callout and the Mailbox Health proxy card; header lost the health ring; Runway & Capacity lost the Pipeline Runway element (Ready Bank card owns the lead-bank story). Campaign cards: sparklines + health pill + disabled Pause/Resume gone; Mark Done + View-in-Smartlead stay (`campaign-actions.tsx` rewritten link-only); Sent/Interested numbers now show on all ≥sm screens. Detail panel: Attached Mailboxes + Smartlead Live Data sections gone (detail API response untouched — trim in Phase 4 when tabs get per-tab fetches). Campaigns tab: deliverability-issues banner gone.
+- **Mailboxes tab:** legacy Add Capacity flow deleted end to end — `domain-pool-section/wrapper`, `order-mailboxes-modal`, dead `order-mailboxes` (410) route AND its `domain-candidates` companion route (only caller was the deleted UI). Request order (decisions panel) is the one ordering path. **Found during work:** the Action Required domain groups rendered mailbox rows with NO header row — that's where Omar's "1.4% · 6 · 30" mystery came from. Both tables now share `MailboxTableHead` with hover explanations on Health / Spam Rate / Campaigns / Daily Limit.
+- **Deleted orphans:** today-live-strip, health-ring, client-health scoring, anomaly-callouts + anomaly-detection scoring, sync-status-widget, mini-sparkline, campaign-health-badge, deliverability-issues. `getTodayLive`/`getClientAnomalyHistory`/`getClientPersonas` query fns kept (harmless, may serve later phases). `/api/tasks/recent-runs` kept (was the freshness panel's API; candidate for Phase 9 cleanup if still unused).
+- **Tests:** command-center + client-detail specs updated — removals asserted as negatives (they must STAY removed), reply-rate label asserted range-scoped, sidebar brand asserted. New `e2e/phase-screens.spec.ts` (SCREENSHOTS=1-gated) captures the acceptance screenshot set to `e2e/screenshots/`.
+
+Verification: `tsc` clean · `next build` green · full e2e suite + production e2e run (BASE_URL) — results in the session close-out commit message. Note: stale `.next` dev types reference deleted routes after a route deletion — `rm -rf .next` before typechecking.

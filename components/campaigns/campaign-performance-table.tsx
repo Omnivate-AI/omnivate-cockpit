@@ -18,7 +18,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { CampaignDetailPanel } from "@/components/campaigns/campaign-detail-panel"
-import { CampaignHealthBadge } from "@/components/campaigns/campaign-health-badge"
 import { CampaignComparisonDialog } from "@/components/campaigns/campaign-comparison-dialog"
 import { CampaignActions } from "@/components/campaigns/campaign-actions"
 import { MarkDoneToggle } from "@/components/campaigns/mark-done-toggle"
@@ -28,7 +27,6 @@ import { SpamRiskBadge } from "@/components/campaigns/spam-risk-badge"
 import { Button } from "@/components/ui/button"
 import { BarChart3 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { MiniSparkline } from "@/components/campaigns/mini-sparkline"
 import { DataAsOf } from "@/components/shared/data-as-of"
 import type { ClientCampaign } from "@/lib/queries/campaigns"
 
@@ -73,57 +71,9 @@ interface SnapshotHistoryRow {
   reply_count: number
 }
 
-/** 7-day sparkline data for a campaign */
-interface CampaignSparklines {
-  sends: number[]
-  replies: number[]
-  interested: number[]
-  replyRate: number[]
-}
-
 interface CampaignPerformanceTableProps {
   campaigns: ClientCampaign[]
   snapshotHistory?: SnapshotHistoryRow[]
-}
-
-/**
- * Compute 7-day sparkline arrays from snapshot history for a campaign.
- * sends/replies/interested = day-over-day deltas of cumulative fields.
- * replyRate = running reply rate from cumulative data.
- */
-function computeSparklines(
-  campaignId: number,
-  history: SnapshotHistoryRow[]
-): CampaignSparklines {
-  const empty: CampaignSparklines = { sends: [], replies: [], interested: [], replyRate: [] }
-
-  const rows = history
-    .filter((r) => r.campaign_id === campaignId)
-    .sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date))
-
-  // Take last 8 rows to get 7 deltas
-  const tail = rows.slice(-8)
-  if (tail.length < 2) return empty
-
-  const sends: number[] = []
-  const replies: number[] = []
-  const interested: number[] = []
-  const replyRate: number[] = []
-
-  for (let i = 1; i < tail.length; i++) {
-    const dailySend = Math.max(0, tail[i].all_time_emails_sent - tail[i - 1].all_time_emails_sent)
-    const dailyReply = Math.max(0, tail[i].reply_count - tail[i - 1].reply_count)
-    const dailyInterested = Math.max(0, tail[i].all_time_interested - tail[i - 1].all_time_interested)
-    sends.push(dailySend)
-    replies.push(dailyReply)
-    interested.push(dailyInterested)
-    // Reply rate as % of cumulative
-    const totalSent = tail[i].all_time_emails_sent
-    const totalInterested = tail[i].all_time_interested
-    replyRate.push(totalSent > 0 ? (totalInterested / totalSent) * 100 : 0)
-  }
-
-  return { sends, replies, interested, replyRate }
 }
 
 function truncate(str: string, max: number): string {
@@ -204,10 +154,9 @@ interface CampaignCardProps {
   isExpanded: boolean
   onToggle: () => void
   onStatusChange?: () => void
-  sparklines?: CampaignSparklines
 }
 
-function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange, sparklines }: CampaignCardProps) {
+function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange }: CampaignCardProps) {
   const snap = campaign.latest
   const replyRate = snap?.positive_reply_rate ?? null
   const allTimeSent = snap?.all_time_emails_sent ?? 0
@@ -278,16 +227,8 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange, sparklin
             <div className="text-[10px] text-muted-foreground">Reply Rate</div>
           </div>
 
-          {/* 4 mini sparklines */}
-          <div className="hidden items-center gap-3 lg:flex">
-            <SparklineMetric label="Sends" data={sparklines?.sends} color="#3b82f6" />
-            <SparklineMetric label="Replies" data={sparklines?.replies} color="#8b5cf6" />
-            <SparklineMetric label="Interested" data={sparklines?.interested} color="#10b981" />
-            <SparklineMetric label="Rate" data={sparklines?.replyRate} color="#f59e0b" />
-          </div>
-
-          {/* Compact metrics for medium screens */}
-          <div className="hidden gap-4 sm:flex lg:hidden">
+          {/* Sent + Interested numbers (mini sparklines removed \u2014 V2 Phase 1) */}
+          <div className="hidden gap-4 sm:flex">
             <div className="text-center">
               <div className="text-xs text-muted-foreground">Sent</div>
               <div className="text-sm font-semibold tabular-nums">
@@ -302,12 +243,7 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange, sparklin
             </div>
           </div>
 
-          {/* Health badge */}
-          <div className="shrink-0">
-            {snap ? <CampaignHealthBadge health={healthResult} /> : <span className="text-xs text-muted-foreground">\u2014</span>}
-          </div>
-
-          {/* Quick actions */}
+          {/* Quick actions \u2014 Mark Done + View in Smartlead (dead Pause/Resume removed) */}
           <MarkDoneToggle
             campaignSpId={campaign.id}
             campaignName={campaign.campaign_name}
@@ -316,9 +252,6 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange, sparklin
           />
           <CampaignActions
             smartleadCampaignId={campaign.smartlead_campaign_id}
-            campaignName={campaign.campaign_name}
-            isActive={campaign.is_active}
-            onStatusChange={onStatusChange}
           />
 
           {/* Expand chevron */}
@@ -346,16 +279,6 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange, sparklin
           }
         />
       )}
-    </div>
-  )
-}
-
-/** Tiny sparkline with label — used inline on campaign cards */
-function SparklineMetric({ label, data, color }: { label: string; data?: number[]; color: string }) {
-  return (
-    <div className="flex flex-col items-center gap-0.5">
-      <MiniSparkline data={data ?? []} width={60} height={24} color={color} fill />
-      <span className="text-[9px] text-muted-foreground">{label}</span>
     </div>
   )
 }
@@ -435,15 +358,6 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
   const [timeRange, setTimeRange] = useState<TimeRange>("all")
   const [compareOpen, setCompareOpen] = useState(false)
   const handleStatusChange = () => router.refresh()
-
-  // Pre-compute sparklines for all campaigns (memoized)
-  const sparklineMap = useMemo(() => {
-    const map = new Map<number, CampaignSparklines>()
-    for (const c of campaigns) {
-      map.set(c.smartlead_campaign_id, computeSparklines(c.smartlead_campaign_id, snapshotHistory))
-    }
-    return map
-  }, [campaigns, snapshotHistory])
 
   const periodMetrics = useMemo(
     () => computePeriodMetrics(campaigns, snapshotHistory, timeRange),
@@ -595,7 +509,6 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
                   )
                 }
                 onStatusChange={handleStatusChange}
-                sparklines={sparklineMap.get(campaign.smartlead_campaign_id)}
               />
             ))}
           </div>
@@ -641,7 +554,6 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
                         : campaign.smartlead_campaign_id
                     )
                   }
-                  sparklines={sparklineMap.get(campaign.smartlead_campaign_id)}
                 />
               ))}
             </div>

@@ -3,7 +3,6 @@ import {
   getClientDomainHealthTrend,
   getClientCapacitySnapshot,
   getClientMasterInbox,
-  getClientPersonas,
   getClientRotationCapacity,
 } from "@/lib/queries/mailboxes"
 import { RotationCapacityCard } from "@/components/mailboxes/rotation-capacity-card"
@@ -22,7 +21,6 @@ import { getClientLifecycleHistory } from "@/lib/queries/portfolio"
 import { getClientDomains } from "@/lib/queries/clients"
 import { LifecycleBreakdown } from "@/components/mailboxes/lifecycle-breakdown"
 import { MasterInboxCard } from "@/components/mailboxes/master-inbox-card"
-import { DomainPoolWrapper } from "@/components/mailboxes/domain-pool-wrapper"
 import { EmptyState } from "@/components/shared/empty-state"
 import { SectionFreshness } from "@/components/shared/section-freshness"
 import { Card, CardContent } from "@/components/ui/card"
@@ -33,12 +31,11 @@ interface MailboxesTabProps {
 }
 
 export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
-  const [mailboxes, healthTrend, capacity, masterInfo, personas, blacklist, orders, lifecycleHistory, domains, rotation, decisions] = await Promise.all([
+  const [mailboxes, healthTrend, capacity, masterInfo, blacklist, orders, lifecycleHistory, domains, rotation, decisions] = await Promise.all([
     getClientMailboxInventory(clientSlug),
     getClientDomainHealthTrend(clientSlug, 30),
     getClientCapacitySnapshot(clientSlug),
     getClientMasterInbox(clientSlug),
-    getClientPersonas(clientSlug),
     getClientBlacklist(clientSlug),
     getClientOrders(clientSlug),
     getClientLifecycleHistory(clientSlug, 30),
@@ -78,14 +75,11 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
 
   if (mailboxes.length === 0 || !capacity) {
     return (
-      <div className="space-y-4">
-        <EmptyState
-          icon={Inbox}
-          title="No Mailboxes"
-          description="No mailbox accounts found for this client. Use the domain pool below to order your first batch."
-        />
-        <DomainPoolWrapper client={clientSlug} personas={personas} />
-      </div>
+      <EmptyState
+        icon={Inbox}
+        title="No Mailboxes"
+        description="No mailbox accounts found for this client. Raise an order via Request Order in the infrastructure decisions panel."
+      />
     )
   }
 
@@ -142,8 +136,8 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
       {/* DNSBL blacklist state for this client's domains (HEALTH-3) */}
       <BlacklistStatusCard summary={blacklist} />
 
-      {/* Domain candidate pool — always visible for capacity expansion */}
-      <DomainPoolWrapper client={clientSlug} personas={personas} />
+      {/* Legacy "Add Capacity" domain-pool flow deleted (V2 Phase 1) —
+          "Request order" in the decisions panel is the one ordering path. */}
 
       {/* InboxKit order history + spend (INFRA-4, client scope) */}
       <ClientOrdersCard orders={orders} />

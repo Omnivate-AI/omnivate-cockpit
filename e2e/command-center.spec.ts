@@ -12,48 +12,48 @@ test.beforeEach(async ({ page }) => {
   ).toBeVisible()
 })
 
-test("freshness labeling is present (SHELL-4)", async ({ page }) => {
+test("freshness header line shows facts date + sync time (V2 Phase 1)", async ({
+  page,
+}) => {
+  // One quiet line up top: "Data as of {business day} · synced {time}"
   await expect(page.getByText("Data as of").first()).toBeVisible()
+  await expect(page.getByText(/synced/).first()).toBeVisible()
 })
 
-test("Today-live strip renders with webhook framing", async ({ page }) => {
-  await expect(page.getByText("Today, live").first()).toBeVisible()
-  await expect(page.getByText(/emails sent/).first()).toBeVisible()
+test("V2 Phase 1 removals stay removed", async ({ page }) => {
+  // Green intraday strip
+  await expect(page.getByText("Today, live")).toHaveCount(0)
+  // Actionable Alerts + Sending Capacity KPI cards (alerts live on their
+  // own page + sidebar badge)
+  await expect(page.getByText("Actionable Alerts", { exact: true })).toHaveCount(0)
+  await expect(page.getByText("Sending Capacity", { exact: true })).toHaveCount(0)
+  // Bottom Data Freshness panel (replaced by the header line)
+  await expect(page.getByText("Data Freshness")).toHaveCount(0)
 })
 
 test("KPI cards render", async ({ page }) => {
   for (const title of [
     "Interested Replies",
     "Total Replies",
-    "Overall Reply Rate",
-    "Actionable Alerts", // tiered per the 07-06 alert rebuild
-    "Sending Capacity",
   ]) {
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible()
   }
-})
-
-test("Data Freshness panel shows the real sync signals", async ({ page }) => {
-  await expect(page.getByText("Data Freshness").first()).toBeVisible()
-  for (const row of [
-    "Daily sync",
-    "Facts through",
-    "Live send capture",
-    "Live reply capture",
-  ]) {
-    await expect(page.getByText(row, { exact: true }).first()).toBeVisible({
-      timeout: 30_000,
-    })
-  }
-  // Refresh button removed 2026-07-07 (manual dispatch dropped) — the panel
-  // is read-only; it must NOT render a Refresh control.
+  // Reply-rate card is scoped + labeled to the selected range (answer #4);
+  // default range on "/" is 7d.
   await expect(
-    page.getByRole("button", { name: "Refresh", exact: true })
-  ).toHaveCount(0)
+    page.getByText("Reply Rate (Last 7 Days)", { exact: true }).first()
+  ).toBeVisible()
 })
 
 test("client summary grid links to client pages", async ({ page }) => {
   await expect(page.locator('a[href^="/clients/"]').first()).toBeVisible()
+})
+
+test("sidebar carries the Omnivate mark + wordmark (V2 Phase 1)", async ({
+  page,
+}) => {
+  await expect(page.getByAltText("Omnivate").first()).toBeVisible()
+  await expect(page.getByText("Omnivate Cockpit")).toHaveCount(0)
 })
 
 test("lead runway slider renders on client cards (Omar 07-06)", async ({

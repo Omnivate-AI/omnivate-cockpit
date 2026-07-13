@@ -448,10 +448,13 @@ export function MailboxInventoryTable({ mailboxes, domainFilter, client }: Mailb
                             </Button>
                           )}
                         </div>
-                        {/* Mailbox rows under this domain */}
+                        {/* Mailbox rows under this domain — same labeled
+                            header as the main table so the numbers read at
+                            a glance (V2 Phase 1, answer #5) */}
                         {!isDraining && (
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
+                              <MailboxTableHead />
                               <tbody>
                                 {dg.mailboxes.map((m) => (
                                   <MailboxRow key={m.id} m={m} isExpanded={expandedRowId === m.id} onToggle={toggleRow} />
@@ -473,22 +476,7 @@ export function MailboxInventoryTable({ mailboxes, domainFilter, client }: Mailb
                 /* Standard table rendering for all other groups */
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="sticky left-0 z-10 bg-muted/50 px-3 py-2.5 text-left font-medium">Email</th>
-                        <th className="px-3 py-2.5 text-left font-medium">Domain</th>
-                        <th className="px-3 py-2.5 text-left font-medium">Status</th>
-                        <th className="px-3 py-2.5 text-left font-medium">Health</th>
-                        <th className="px-3 py-2.5 text-left font-medium">Platform</th>
-                        <th className="px-3 py-2.5 text-right font-medium">Spam Rate</th>
-                        <th className="px-3 py-2.5 text-right font-medium">Reply Rate</th>
-                        <th className="px-3 py-2.5 text-center font-medium">Campaigns</th>
-                        <th className="px-3 py-2.5 text-right font-medium">Daily Limit</th>
-                        <th className="px-3 py-2.5 text-center font-medium">Master</th>
-                        <th className="px-3 py-2.5 text-left font-medium">Tags</th>
-                        <th className="px-3 py-2.5 text-right font-medium">Actions</th>
-                      </tr>
-                    </thead>
+                    <MailboxTableHead />
                     <tbody>
                       {items.map((m) => (
                         <MailboxRow key={m.id} m={m} isExpanded={expandedRowId === m.id} onToggle={toggleRow} />
@@ -530,6 +518,50 @@ export function MailboxInventoryTable({ mailboxes, domainFilter, client }: Mailb
         />
       )}
     </div>
+  )
+}
+
+/**
+ * Shared header for every mailbox table on the tab (incl. the Action
+ * Required domain groups, which previously rendered rows with no header —
+ * the "1.4% · 6 · 30" mystery from Omar's walkthrough). Ambiguous columns
+ * carry a native hover explanation (V2 Phase 1, answer #5).
+ */
+function MailboxTableHead() {
+  const explained = "cursor-help underline decoration-dotted underline-offset-2 decoration-muted-foreground/50"
+  return (
+    <thead>
+      <tr className="border-b bg-muted/50">
+        <th className="sticky left-0 z-10 bg-muted/50 px-3 py-2.5 text-left font-medium">Email</th>
+        <th className="px-3 py-2.5 text-left font-medium">Domain</th>
+        <th className="px-3 py-2.5 text-left font-medium">Status</th>
+        <th className="px-3 py-2.5 text-left font-medium">
+          <span className={explained} title="Smartlead warmup reputation — 100 is healthy; below 97 the box is treated as burnt and replaced">
+            Health
+          </span>
+        </th>
+        <th className="px-3 py-2.5 text-left font-medium">Platform</th>
+        <th className="px-3 py-2.5 text-right font-medium">
+          <span className={explained} title="Share of this mailbox's sends flagged as spam (from the daily Smartlead sync)">
+            Spam Rate
+          </span>
+        </th>
+        <th className="px-3 py-2.5 text-right font-medium">Reply Rate</th>
+        <th className="px-3 py-2.5 text-center font-medium">
+          <span className={explained} title="Number of campaigns this mailbox is attached to">
+            Campaigns
+          </span>
+        </th>
+        <th className="px-3 py-2.5 text-right font-medium">
+          <span className={explained} title="Maximum emails this mailbox may send per day (Smartlead setting)">
+            Daily Limit
+          </span>
+        </th>
+        <th className="px-3 py-2.5 text-center font-medium">Master</th>
+        <th className="px-3 py-2.5 text-left font-medium">Tags</th>
+        <th className="px-3 py-2.5 text-right font-medium">Actions</th>
+      </tr>
+    </thead>
   )
 }
 

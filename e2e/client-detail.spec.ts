@@ -7,17 +7,22 @@ import { test, expect } from "@playwright/test"
 
 const CLIENT = "cylindo"
 
-test("overview tab renders header, live strip and KPI grid", async ({
+test("overview tab renders header and KPI grid", async ({
   page,
 }) => {
   await page.goto(`/clients/${CLIENT}`)
   await expect(page.getByText("Cylindo").first()).toBeVisible()
-  await expect(page.getByText("Today, live").first()).toBeVisible({
+  await expect(page.getByText("Interested Replies").first()).toBeVisible({
     timeout: 60_000,
   })
-  await expect(page.getByText("Interested Replies").first()).toBeVisible()
+  // V2 Phase 1 removals: live strip, mailbox summary KPI, pipeline runway
+  await expect(page.getByText("Today, live")).toHaveCount(0)
+  await expect(page.getByText("Mailbox Health", { exact: true })).toHaveCount(0)
+  await expect(page.getByText("Pipeline Runway")).toHaveCount(0)
   // Recipient-inbox performance panel (from the send-split fill)
-  await expect(page.getByText("By recipient inbox").first()).toBeVisible()
+  await expect(page.getByText("By recipient inbox").first()).toBeVisible({
+    timeout: 60_000,
+  })
   for (const tab of [
     "Overview",
     "Interested Leads",
@@ -78,6 +83,10 @@ test("mailboxes tab renders all lifecycle groups (resting-crash regression)", as
   // Build-5 (R11): rotation-group capacity card + infra decisions panel
   await expect(page.getByText("Rotation Groups").first()).toBeVisible()
   await expect(page.getByText("Infrastructure Decisions").first()).toBeVisible()
+  // V2 Phase 1: the legacy Add Capacity / Domain Pool flow is deleted —
+  // Request Order (decisions panel) is the one ordering path.
+  await expect(page.getByText("Domain Pool")).toHaveCount(0)
+  await expect(page.getByText("Add Capacity")).toHaveCount(0)
 })
 
 test("infra decisions panel is actionable — approve/deny present when a decision is open (Build-5 R11)", async ({

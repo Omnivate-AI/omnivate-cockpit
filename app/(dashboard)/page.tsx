@@ -1,8 +1,7 @@
 import { Suspense } from "react"
-import { Mail, MessageSquare, MessageCircle, Percent, Bell, Gauge } from "lucide-react"
-import { getGlobalKPIs, getClientSummaries, getTodayLive } from "@/lib/queries/analytics"
+import { Mail, MessageSquare, MessageCircle, Percent } from "lucide-react"
+import { getGlobalKPIs, getClientSummaries } from "@/lib/queries/analytics"
 import { getPortfolioHealth } from "@/lib/queries/portfolio"
-import { TodayLiveStrip } from "@/components/shared/today-live-strip"
 import { PortfolioHealthStrip } from "@/components/dashboard/portfolio-health-strip"
 import { getTopAlerts } from "@/lib/queries/alerts"
 import { getRecentSpamRisks } from "@/lib/queries/campaigns"
@@ -11,7 +10,6 @@ import { MetricCard } from "@/components/shared/metric-card"
 import { ClientSummaryGrid } from "@/components/dashboard/client-summary-grid"
 import { AlertsBanner } from "@/components/dashboard/alerts-banner"
 import { SpamRiskBanner } from "@/components/dashboard/spam-risk-banner"
-import { SyncStatusWidget } from "@/components/dashboard/sync-status-widget"
 import { SectionFreshness } from "@/components/shared/section-freshness"
 import { TimeRangeFilter } from "@/components/dashboard/time-range-filter"
 import { parseRangeDays } from "@/lib/range-utils"
@@ -32,12 +30,11 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
   const days = parseRangeDays(params.range)
   const rangeKey = params.range ?? "7d"
 
-  const [kpis, summaries, topAlerts, spamRisks, todayLive, portfolio] = await Promise.all([
+  const [kpis, summaries, topAlerts, spamRisks, portfolio] = await Promise.all([
     getGlobalKPIs(days),
     getClientSummaries(days),
     getTopAlerts(5),
     getRecentSpamRisks(7, 3),
-    getTodayLive(),
     getPortfolioHealth(),
   ])
 
@@ -52,20 +49,10 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
     ])
   )
 
-  const liveTotals = todayLive.reduce(
-    (acc, r) => ({
-      sends: acc.sends + r.sends_today,
-      replies: acc.replies + r.replies_today,
-      lastEvent:
-        !acc.lastEvent || (r.last_send_at && r.last_send_at > acc.lastEvent)
-          ? r.last_send_at
-          : acc.lastEvent,
-    }),
-    { sends: 0, replies: 0, lastEvent: null as string | null }
-  )
-
   const replyRateColors = replyRateColor(kpis.overallReplyRate)
-  const emailsSentLabel = days === 1 ? "Emails Sent Yesterday" : `Emails Sent (${RANGE_LABELS[rangeKey] ?? `${days}d`})`
+  const rangeLabel = RANGE_LABELS[rangeKey] ?? `${days}d`
+  const emailsSentLabel = days === 1 ? "Emails Sent Yesterday" : `Emails Sent (${rangeLabel})`
+  const replyRateLabel = days === 1 ? "Reply Rate Yesterday" : `Reply Rate (${rangeLabel})`
 
   return (
     <div className="space-y-8">
@@ -77,20 +64,12 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
           <p className="mt-1 text-sm text-muted-foreground">
             Overview of all clients and campaigns
           </p>
-          <SectionFreshness live className="mt-1.5" />
+          <SectionFreshness live synced className="mt-1.5" />
         </div>
         <Suspense fallback={null}>
           <TimeRangeFilter />
         </Suspense>
       </div>
-
-      {/* Intraday activity from the live webhook capture */}
-      <TodayLiveStrip
-        sendsToday={liveTotals.sends}
-        repliesToday={liveTotals.replies}
-        lastEventAt={liveTotals.lastEvent}
-        scopeLabel="all clients"
-      />
 
       {/* Alerts Banner — only renders when alerts exist */}
       <AlertsBanner alerts={topAlerts} />
@@ -103,7 +82,7 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
       <div className="mb-2 flex justify-end">
         <SectionFreshness factDate={kpis.latestSnapshotDate} />
       </div>
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title={emailsSentLabel}
           value={kpis.emailsSentYesterday.toLocaleString()}
@@ -120,7 +99,7 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
           icon={MessageCircle}
         />
         <MetricCard
-          title="Overall Reply Rate"
+          title={replyRateLabel}
           value={
             kpis.overallReplyRate > 0
               ? `${kpis.overallReplyRate.toFixed(1)}%`
@@ -128,21 +107,6 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
           }
           icon={Percent}
           valueColor={replyRateColors.text}
-        />
-        <MetricCard
-          title="Actionable Alerts"
-          value={kpis.activeAlerts}
-          icon={Bell}
-          valueColor={kpis.activeAlerts > 0 ? "text-rose-600" : undefined}
-        />
-        <MetricCard
-          title="Sending Capacity"
-          value={
-            kpis.capacityUtilization > 0
-              ? `${kpis.capacityUtilization.toFixed(0)}%`
-              : "N/A"
-          }
-          icon={Gauge}
         />
       </div>
       </div>
@@ -158,12 +122,6 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
           periodDays={days}
           infraByClient={infraByClient}
         />
-      </div>
-
-      {/* Data Freshness — the send-targets chart was removed per Omar's 07-06 review
-          (min-sends-per-day targets idea parked for a future rebuild) */}
-      <div className="max-w-md">
-        <SyncStatusWidget />
       </div>
     </div>
   )

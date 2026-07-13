@@ -314,8 +314,6 @@ export interface GlobalKPIs {
   positiveReplies: number
   totalReplies: number
   overallReplyRate: number
-  activeAlerts: number
-  capacityUtilization: number
   latestSnapshotDate: string | null
 }
 
@@ -341,27 +339,12 @@ export const getGlobalKPIs = cache(async (days: number = 1): Promise<GlobalKPIs>
   cutoff.setDate(cutoff.getDate() - days)
   const cutoffStr = cutoff.toISOString().split("T")[0]
 
-  const [perfRes, lifetimeRes, capacityRes, alertsRes] = await Promise.all([
-    supabase
-      .from("vw_cockpit_daily_client_perf")
-      .select("client, snapshot_date, emails_sent_count, reply_count, positive_replies_count")
-      .in("client", activeSlugs)
-      .gte("snapshot_date", cutoffStr)
-      .order("snapshot_date", { ascending: false }),
-    supabase
-      .from("vw_cockpit_client_lifetime")
-      .select("client, all_time_emails_sent, all_time_interested")
-      .in("client", activeSlugs),
-    supabase
-      .from("vw_cockpit_client_capacity")
-      .select("client, active_daily_capacity")
-      .in("client", activeSlugs),
-    supabase
-      .from("vw_cockpit_alerts")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "open")
-      .eq("tier", "actionable"),
-  ])
+  const perfRes = await supabase
+    .from("vw_cockpit_daily_client_perf")
+    .select("client, snapshot_date, emails_sent_count, reply_count, positive_replies_count")
+    .in("client", activeSlugs)
+    .gte("snapshot_date", cutoffStr)
+    .order("snapshot_date", { ascending: false })
 
   let emailsSentPeriod = 0
   let positiveRepliesPeriod = 0
@@ -376,32 +359,17 @@ export const getGlobalKPIs = cache(async (days: number = 1): Promise<GlobalKPIs>
     }
   }
 
-  let allTimeEmailsSent = 0
-  let allTimeInterested = 0
-  for (const r of (lifetimeRes.data ?? []) as LifetimeRow[]) {
-    allTimeEmailsSent += r.all_time_emails_sent ?? 0
-    allTimeInterested += r.all_time_interested ?? 0
-  }
-
-  const totalCapacity = ((capacityRes.data ?? []) as CapacityRow[]).reduce(
-    (sum, r) => sum + (r.active_daily_capacity ?? 0),
-    0
-  )
-
+  // Reply rate answers the same question as the cards beside it: total
+  // replies ÷ emails sent within the SELECTED RANGE — not all-time
+  // (V2 Phase 1, walkthrough answer #4).
   const overallReplyRate =
-    allTimeEmailsSent > 0 ? (allTimeInterested / allTimeEmailsSent) * 100 : 0
-
-  const avgDailySent = days > 0 ? emailsSentPeriod / days : emailsSentPeriod
-  const capacityUtilization =
-    totalCapacity > 0 ? (avgDailySent / totalCapacity) * 100 : 0
+    emailsSentPeriod > 0 ? (totalReplies / emailsSentPeriod) * 100 : 0
 
   return {
     emailsSentYesterday: emailsSentPeriod,
     positiveReplies: positiveRepliesPeriod,
     totalReplies,
     overallReplyRate,
-    activeAlerts: alertsRes.count ?? 0,
-    capacityUtilization,
     latestSnapshotDate,
   }
 })

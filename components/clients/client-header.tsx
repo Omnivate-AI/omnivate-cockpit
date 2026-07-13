@@ -2,8 +2,6 @@ import Link from "next/link"
 import { ChevronRight, Mail, MessageSquare, Inbox } from "lucide-react"
 import type { ClientSnapshot } from "@/types/analytics"
 import { ClientActionsDropdown } from "./client-actions-dropdown"
-import { HealthRing } from "@/components/shared/health-ring"
-import { computeClientHealthScore, type ClientHealthInput } from "@/lib/scoring/client-health"
 
 type HealthStatus = "healthy" | "warning" | "critical" | "no-data"
 
@@ -91,18 +89,6 @@ export function ClientHeader({
   const replyRate = totalSent > 0 ? replyRateNum.toFixed(1) : "0"
   const mailboxCount = latestSnapshot?.mailbox_count ?? 0
 
-  // Client health score
-  const healthInput: ClientHealthInput = {
-    avgMailboxHealth: null,
-    sendAdherence: latestSnapshot && latestSnapshot.daily_email_target > 0
-      ? latestSnapshot.emails_sent_count / latestSnapshot.daily_email_target
-      : null,
-    replyRate: latestSnapshot && totalSent > 0 ? replyRateNum : null,
-    inboxPlacement: null,
-    pendingAlerts: alertCount,
-  }
-  const healthResult = latestSnapshot ? computeClientHealthScore(healthInput) : null
-
   return (
     <div
       className={`sticky top-0 z-10 -mx-3 px-3 py-3 sm:-mx-6 sm:px-6 sm:py-4 backdrop-blur-sm bg-gradient-to-r ${config.gradient} ${config.gradientDark} border-b border-black/5 dark:border-white/5`}
@@ -124,15 +110,8 @@ export function ClientHeader({
             </span>
           </nav>
 
-          {/* Name + Health Ring + Status badge */}
+          {/* Name + Status badge (health-score ring removed — V2 Phase 1, decision #2) */}
           <div className="flex items-center gap-3">
-            {healthResult && (
-              <HealthRing
-                score={healthResult.score}
-                breakdown={healthResult.breakdown}
-                size={48}
-              />
-            )}
             <h1 className="text-2xl font-semibold capitalize truncate">
               {displayName}
             </h1>

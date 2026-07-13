@@ -1,10 +1,10 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
-  Mail,
   Bell,
   ScrollText,
   Settings,
@@ -104,12 +104,17 @@ export function Sidebar({ alertCount = 0, clients, onNavigate }: SidebarProps) {
 
   return (
     <div className="flex h-full flex-col bg-white dark:bg-card border-r border-stone-200 dark:border-border">
-      {/* Logo */}
-      <div className="flex h-16 items-center gap-2 px-5 border-b border-stone-100 dark:border-border">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
-          <Mail className="h-4 w-4" />
-        </div>
-        <span className="text-base font-semibold text-foreground">Omnivate Cockpit</span>
+      {/* Logo — the real Omnivate mark (same as the favicon) */}
+      <div className="flex h-16 items-center gap-2.5 px-5 border-b border-stone-100 dark:border-border">
+        <Image
+          src="/omnivate-mark.png"
+          alt="Omnivate"
+          width={32}
+          height={32}
+          priority
+          className="h-8 w-8 rounded-lg"
+        />
+        <span className="text-base font-semibold tracking-tight text-foreground">Omnivate</span>
       </div>
 
       {/* Top nav: Command Center */}
