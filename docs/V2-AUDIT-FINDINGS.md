@@ -1,5 +1,7 @@
 # V2 Phase 2 — Numbers Audit Findings
 
+> **Phase 3 executed the fix list on 2026-07-14 (same day) — see the "Phase 3 resolution" section directly below the fix list. All 8 🔴 are closed (RC-8 and the target-value reconciliation are with Omar as decisions, not defects). The matrix below is preserved as the audit-time record.**
+
 **Run:** 2026-07-14 (Amzat + Claude) · **Read-only — no code or data was changed.**
 **Scope:** every Phase 2 checklist item, verified fresh against Supabase (project `uivgowblojtyiobhgjlv`, via Management API) **and live Smartlead** (production API key), on **Acceleration Partners** (Smartlead client 408744) and **Cylindo** (320846), for 7 / 14 / 30-day windows. Prior validations were treated as hints only.
 **Method:** for every surface, three layers were compared — (1) what the cockpit query/view computes, (2) an independent SQL recomputation from the `sp_*` tables, (3) a live pull from the same Smartlead endpoints the sync uses (`/campaigns/{id}/sequence-analytics` per day and per window, `/campaigns/{id}/analytics` for lifetime, SmartDelivery per-seed reports for placement, `/master-inbox/{id}` for link resolution). 60 campaigns swept, ~700 live API calls, zero write operations.
@@ -118,6 +120,29 @@ Ordered; sync-side items go to `smartlead-perf-plugin` as a PR (its repo), engin
 12. **Small view fixes:** health-summary counts `draining` (categories must sum to total); placement trend skips null/0-seed rows; orders page label "orders placed via this system (since Jun 2026)"; audit table renders "—" instead of an empty self-link when client is null; digest header rate → range-scoped (interim only — page dies in Phase 9); fix `client_analytics_config.is_active=false` for acceleration_partners (latent — app reads `sp_clients.active`, but the flag will bite anything that trusts config).
 
 **Explicitly verified good — do not touch in Phase 3:** send capture and per-day sends (exact), lifetime campaign stats (≤1-business-day freshness), runway arithmetic and scoping, placement values (per-seed recompute matched), mailbox reply-rate view, orders spend semantics, ready-bank snapshot cadence (daily incl. weekends), interested snapshot ↔ live view consistency, campaign View-in-Smartlead links, provider sender-split reconciliation.
+
+---
+
+## Phase 3 resolution — executed 2026-07-14 (same day)
+
+Everything on the fix list shipped; every 🔴 re-verified against live Smartlead or production. Cockpit commit `c1702ff` (deployed, prod e2e 34 passed / 1 pre-existing flaky / 1 skipped) · perf-plugin [PR #4](https://github.com/Omnivate-AI/smartlead-perf-plugin/pull/4) · email-infra [PR #1](https://github.com/Omnivate-AI/email-infra-plugin/pull/1) · cockpit migration 017 + perf migration 023 applied live · backfills run.
+
+| RC | Status | What shipped + re-verification |
+|---|---|---|
+| RC-1 late replies/categorizations | ✅ CLOSED | Sync gained a trailing 5-calendar-day facts re-sync (step 3c, `FACTS_RESYNC_DAYS`); full-window backfill run (2,780 pulls · **62 rows converged** · 1,905 already exact). **Re-check vs the audit's live pulls: Cylindo 7/14/30d now EXACT on all nine numbers; AP exact on sends + positives, replies +1 (a reply that arrived after the audit baseline — freshness, not drift).** AP 30d positives 16→21 = the live value. |
+| RC-2 weekend gap | ✅ CLOSED | Trailing window covers Sat/Sun from the Saturday + Monday runs; backfill created **23 weekend rows** (AP 12, PayCaptain 11 — AP's 69 weekend sends now in every window; 7d sends 7,304→7,373 = live exactly). Charts now draw weekend days where activity existed. |
+| RC-3 Sun/Mon zeros | ✅ CLOSED | Every range window anchors to `latest_fact_date` (`rangeWindow()` in analytics.ts); days=1 KPIs labeled with the actual business day ("Mon, 13 Jul" — verified on production). Mechanically deterministic; first live Monday is 2026-07-20. |
+| RC-4 three reply-rate semantics | ✅ CLOSED | Client header + overview = total-replies all-time, labeled (Cylindo header now 1.4%, not 0.1% — production-verified); summary card = range-scoped total-reply rate with tooltip; all positive-based rates relabeled "Positive Reply Rate" (charts, compare, campaign panels). |
+| RC-5 target side | ✅ CLOSED (values with Omar) | Period target = Σ `getTargetForDate` over the range's actual fact dates — weekday JSON respected, no calendar inflation. The per-client *values* (PayCaptain 1,200-vs-3,000, Cylindo floor NULL) are a one-line-each Omar confirmation: `docs/V2-PHASE3-OMAR-QUESTIONS.md`. |
+| RC-6 inverted caps | ✅ CLOSED | Belt: cockpit views read the synced `daily_send_limit` (migration 017 — AP Daily Limit now 25 ✓, active capacity 1,250 ✓, rotation groups 1,250/250 ✓, health categories sum ✓). Braces: rotation writes `max_email_per_day` on every swap (email-infra PR #1) + one-off correction executed live (**300/303 boxes fixed**, logged to `sp_actions_log`, re-run reports 0). |
+| RC-7 digest code path | ✅ interim | All digest numbers now one scope (latest business day) — no more lifetime replies beside day sends, header rate no longer all-time interested. Page still merges into the Command Center in Phase 9. |
+| RC-8 OrbitalX | ⏳ Omar decision | Deliberately not self-resolved — track it (1-line matcher + backfill) or retire it (`active=false`). Written up in `docs/V2-PHASE3-OMAR-QUESTIONS.md`. Note: its send-floor alert fires daily ("sent 0 — below 1200/day") purely because it isn't synced — the decision also silences that noise. |
+| RC-9 dead conversation links | ✅ CLOSED | `campaign_lead_map_id` captured (perf migration 023 + category capture) and backfilled; links rebuilt on it, hidden when null. **Re-verification: 26/26 sampled links resolve to the correct lead** (was 0/26); snapshot coverage 144/145 rows. |
+| RC-10 Interested tab undercount | ✅ CLOSED | View + snapshot rebuilt on `sp_campaign_leads` current category ∈ {Interested, human_action_required}: Cylindo 38→**94** rows, AP 22→**31** (9 HAR badged "action needed"), definition visible on the tab and on every Positive Replies card. |
+
+🟡 items closed alongside: health-summary `draining` counted (categories sum to total) · placement trend skips null/0-seed rows · audit table renders "system/—" instead of empty self-links · orders page scope note ("orders placed via this system since Jun 2026") · header mailbox count shows "(N sending)" · capacity gauge relabeled "allowed/day" (sends ÷ current caps) · AP `client_analytics_config.is_active` corrected. Remaining 🟡 by design: campaign-daily weekday sparsity pre-2026-06-09 (history simply starts there), placement cumulative semantics (Phase 5/7 chart redesign), recipient-panel "no capture" state (Phase 5), digest retirement (Phase 9), lifecycle parent-rollup weighting (Phase 7).
+
+**Backfill honesty note:** 156 of 2,780 backfill pulls failed — 38 are permanent 404s (Smartlead deleted campaigns 3514575 + 3573970, both 0-send "Signal Buying Intent" drafts still present in `sp_campaigns`; cleanup candidate), ~118 transient DNS failures clustered on 5 near-zero-activity follow-up campaigns. The daily trailing re-sync self-heals anything recent; the affected rows are re-pull attempts on existing/zero rows, not lost sends (the window re-check above proves the material numbers are exact).
 
 ---
 

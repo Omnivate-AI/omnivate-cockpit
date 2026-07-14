@@ -24,7 +24,7 @@ Everything you asked us to verify gets verified fresh as part of this plan — t
 |---|---|---|---|
 | 1 | Declutter, branding, dead-button removal | 1 session | ✅ Done (2026-07-13) |
 | 2 | The numbers audit — every metric vs Smartlead | 1 session | ✅ Done (2026-07-14) — `docs/V2-AUDIT-FINDINGS.md` |
-| 3 | Fix the math, definitions, links + backfill | 1–2 sessions | ☐ Not started |
+| 3 | Fix the math, definitions, links + backfill | 1–2 sessions | ✅ Done (2026-07-14) — all 🔴 closed + re-verified vs Smartlead; 2 decisions with Omar (`docs/V2-PHASE3-OMAR-QUESTIONS.md`) |
 | 4 | Make it feel alive (loading states, date range) | 1 session | ☐ Not started |
 | 5 | Charts & campaigns restructure + client-graph overhaul (Omar 07-13) | 1 session | ☐ Not started |
 | 6 | Ready Bank truth, client by client | 1 session | ☐ Not started |

@@ -76,6 +76,17 @@ Per Amzat: the V2 data-accuracy validation is done fresh in Phase 2 — treat pr
 
 _(sessions append findings here — newest first)_
 
+### 2026-07-14 (later) — Phase 3 done (fix the math, definitions, links + backfill)
+
+Executed the full fix list from `V2-AUDIT-FINDINGS.md` the same day as the audit; the resolution table (per-RC status + re-verification) lives in that doc. Highlights + operational notes:
+
+- **Three repos, three vehicles:** cockpit direct on main (`c1702ff`, deployed + prod-verified); sync fixes as smartlead-perf-plugin **PR #4** (branch `fix/v2-audit-rc1-rc2-rc9`); rotation fix as email-infra-plugin **PR #1** (branch `fix/rotation-max-email-per-day`, based on `phases-4-8-ordering-adoption`). Both PRs await Amzat's merge — the *data* fixes are already live (migrations 017 cockpit + 023 perf applied via Management API; backfills run; 300-box cap-column correction executed + logged).
+- **Acceptance proof:** post-backfill window re-check vs the audit's live Smartlead pulls — Cylindo 7/14/30d exact on all nine numbers; AP exact on sends+positives, replies +1 (arrived after the baseline). 26/26 conversation links resolve to the correct lead (was 0/26). Production screenshots confirm: CC "Positive Replies" card w/ definition, date-anchored "(Mon 13 Jul)" labels, Cylindo header 1.4% total-reply rate (was 0.1% interested rate), "187 Mailboxes (65 sending)", tab renamed, Daily Limit 25 on AP active boxes.
+- **Gotchas for future sessions:** `/campaigns/{id}/leads?email=` 400s (Joi) — use `?lead_category_id=` pages; `GET /master-inbox/{leadMap}` response carries `lead_email`/`email_lead_id`/`email_lead_map_id` (NOT nested `lead.email`); port 3000 is squatted on this box — `next start -p 3210` + `BASE_URL` for local e2e (playwright.config has NO webServer — start the server yourself); prod e2e takes ~50 min (fine). Backfill: 156/2,780 pulls failed (38 = Smartlead-deleted campaigns 3514575/3573970 → still rows in sp_campaigns, cleanup candidate; ~118 transient DNS on near-zero followups — daily trailing re-sync self-heals).
+- **Capacity semantics decision:** `estimated_max_capacity` (and the client-page gauge) now = Σ synced `daily_send_limit` over active/resting/reserve/warming = "what current caps allow/day" — bench boxes carry cap 0 until deployed, so AP reads 1,500 (not the old intent-column 4,190). Gauge relabeled "allowed/day"; rotation-card reserve row can legitimately show "97 boxes · 0/day". Phase 7's drill-down owns any richer potential-capacity story.
+- **Positive-replies canonicalization:** counts surfaces = `sp_campaign_leads` current category (Int + HAR); trend charts stay on daily-facts positives (now converging via trailing re-sync). KPI card, client cards, tab all labeled with the definition. Note lifetime `campaign_lead_stats.interested` ≈ Int+HAR natively, so the header's all-time interested number needed no source change — only labels.
+- **OPEN with Omar (docs/V2-PHASE3-OMAR-QUESTIONS.md):** OrbitalX track-or-retire (its unsynced state also fires a daily false send-floor alert); PayCaptain/Cylindo/Omnivate target+floor values. Plus the standing Pipeline-tab question from the requirements doc.
+
 ### 2026-07-14 — Phase 2 done (numbers audit, read-only)
 
 Full checklist executed against Supabase AND live Smartlead (7/14/30d windows, AP + Cylindo; 60 campaigns swept, ~700 live API calls, zero writes). Deliverable: **`docs/V2-AUDIT-FINDINGS.md`** — verdict matrix (14 ✅ · 12 🟡 · 8 🔴), root causes RC-1…RC-10, and the exact Phase 3 fix/backfill list. Headlines:

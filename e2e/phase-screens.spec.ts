@@ -20,7 +20,7 @@ test.describe("phase screenshots", () => {
 
     const shots: { path: string; url: string; waitFor?: string }[] = [
       { path: "command-center.png", url: "/", waitFor: "Positive Replies" },
-      { path: "client-overview.png", url: `/clients/${CLIENT}`, waitFor: "Interested Replies" },
+      { path: "client-overview.png", url: `/clients/${CLIENT}`, waitFor: "Positive Replies" },
       { path: "client-campaigns.png", url: `/clients/${CLIENT}?tab=campaigns`, waitFor: "Campaign stats synced" },
       { path: "client-mailboxes.png", url: `/clients/${CLIENT}?tab=mailboxes`, waitFor: "Rotation Groups" },
     ]
