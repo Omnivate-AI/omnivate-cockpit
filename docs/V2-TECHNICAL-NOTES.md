@@ -76,6 +76,18 @@ Per Amzat: the V2 data-accuracy validation is done fresh in Phase 2 — treat pr
 
 _(sessions append findings here — newest first)_
 
+### 2026-07-14 (night) — Phase 5 done (charts & campaigns restructure + graph overhaul)
+
+Commit `0f84a40`, deployed + prod-verified same evening as Phase 4 (plan explicitly allows 4+5 pairing). **Omar-facing change list: `docs/V2-PHASE5-CHART-CHANGES.md`** — 8 judgment calls flagged for his review per the acceptance criteria.
+
+- **Overview suite** (`components/clients/overview-performance.tsx`): ONE range selection (presets + Phase 4's custom picker) drives KPI cards + the confirmed three charts — sends-vs-target (weekday-stepped target line via `getTargetForDate`; red under-target / gray weekend bars), reply-rate trend (TOTAL replies ÷ sends per day, header shows period avg + pp delta vs preceding equal period, hovercard = that day's sends/replies/rate, zero-send days bridged), positive replies count. All client-side filtered from ONE 365d `getClientPerformanceHistory` fetch — instant switches, and the overview dropped from 9 queries to 6.
+- **Deleted** (superseded): `mini-send-chart` / `send-reply-chart` / `replies-chart` / `performance-metrics` components + the dead query fns (`getClientRecentHistory` / `getClientSendReplyHistory` / `getClientReplyHistory` / `getClientAnomalyHistory`, ~150 lines).
+- **Campaigns tab**: Type dropdown → real sections. Active = primary only (emerald) · Follow-up (sky, "reply-triggered — low volume by design") · Referral (violet) · Past unchanged. Sort inside sections stays worst-health-first.
+- **Compare dialog**: side-by-side Inbox Placement panel (latest test per campaign — colored bar + % + test date; `/api/campaigns/{id}/detail` already returned `placement`, the dialog was dropping it). The overlaid day-by-day sends (delta-from-lifetime) + positive-reply-rate lines were verified correct as-built.
+- **Placement trend**: single-test campaigns render as a big dot + "(1 test)" legend suffix; the whole-chart 2+ gate is now ≥1 (empty state only for zero tests in-window). Null/0-seed rows were already dropped in Phase 3.
+- **Scope note**: the `/compare` PAGE kept its 14d charts — this phase's compare deliverable was the campaign comparison dialog; flagged in the change list as an open offer.
+- Local e2e 35 passed / 3 expected skips on the final build; prod suite re-run + fresh screenshots after deploy. One `fetch failed` in the local server log = the documented box-level DNS flake in auth middleware (not an app bug, absent on Vercel).
+
 ### 2026-07-14 (evening) — Phase 4 done (make it feel alive)
 
 Commit `1f6fa9d`, deployed + prod-verified. **Acceptance measured on production, from the browser's own mousedown to the pressed-state paint** (`e2e/feedback-timing.spec.ts`, `MEASURE=1` opt-in):

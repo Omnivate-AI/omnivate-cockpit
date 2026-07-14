@@ -26,7 +26,7 @@ Everything you asked us to verify gets verified fresh as part of this plan — t
 | 2 | The numbers audit — every metric vs Smartlead | 1 session | ✅ Done (2026-07-14) — `docs/V2-AUDIT-FINDINGS.md` |
 | 3 | Fix the math, definitions, links + backfill | 1–2 sessions | ✅ Done (2026-07-14) — all 🔴 closed + re-verified vs Smartlead; 2 decisions with Omar (`docs/V2-PHASE3-OMAR-QUESTIONS.md`) |
 | 4 | Make it feel alive (loading states, date range) | 1 session | ✅ Done (2026-07-14) — feedback 2.7–4.4s → instant; tab switches run only their own queries |
-| 5 | Charts & campaigns restructure + client-graph overhaul (Omar 07-13) | 1 session | ☐ Not started |
+| 5 | Charts & campaigns restructure + client-graph overhaul (Omar 07-13) | 1 session | ✅ Done (2026-07-14) — confirmed 3-chart suite live; change list in `docs/V2-PHASE5-CHART-CHANGES.md` for Omar's review |
 | 6 | Ready Bank truth, client by client | 1 session | ☐ Not started |
 | 7 | Mailboxes & orders — make actions real | 1–2 sessions | ☐ Not started |
 | 8 | Alerts that behave like alerts | 1 session | ☐ Not started |
