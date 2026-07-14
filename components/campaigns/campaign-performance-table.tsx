@@ -31,8 +31,7 @@ import { DataAsOf } from "@/components/shared/data-as-of"
 import type { ClientCampaign } from "@/lib/queries/campaigns"
 
 // campaign_class from vw_cockpit_campaign_class (referral-aware, unlike
-// the old primary/subsequence campaign_type)
-type TypeFilter = "all" | "primary" | "follow_up" | "referral"
+// the old primary/subsequence campaign_type) drives the SECTION split below
 type TimeRange = "7" | "14" | "30" | "all"
 
 const CLASS_CHIP: Record<
@@ -352,7 +351,6 @@ const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
 
 export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: CampaignPerformanceTableProps) {
   const router = useRouter()
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all")
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [pausedCollapsed, setPausedCollapsed] = useState(true)
   const [timeRange, setTimeRange] = useState<TimeRange>("all")
@@ -364,21 +362,13 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
     [campaigns, snapshotHistory, timeRange]
   )
 
-  const filtered = useMemo(() => {
-    if (typeFilter === "all") return campaigns
-    return campaigns.filter((c) => campaignClass(c) === typeFilter)
-  }, [campaigns, typeFilter])
-
-  // Split by REAL Smartlead status (active vs past), sorted
-  // worst-health-first, primary before follow-up/referral
-  const { active, paused } = useMemo(() => {
-    const classRank = (c: ClientCampaign) =>
-      campaignClass(c) === "primary" ? 0 : 1
+  // V2 Phase 5: campaign CLASS is a real section split now, not a dropdown
+  // filter — Active shows primary outbound only; follow-up subsequences and
+  // referral campaigns get their own sections (they answer different
+  // questions, and their volumes/rates aren't comparable to primaries).
+  // Past keeps every class; status is the divider there.
+  const { activePrimary, activeFollowUp, activeReferral, paused } = useMemo(() => {
     const sortFn = (a: ClientCampaign, b: ClientCampaign) => {
-      // Primary before follow-up/referral
-      if (classRank(a) !== classRank(b)) {
-        return classRank(a) - classRank(b)
-      }
       // Worst health first
       const aSnap = a.latest
       const bSnap = b.latest
@@ -393,11 +383,19 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
       return aHealth - bHealth // worst first
     }
 
-    const activeCampaigns = filtered.filter((c) => c.is_active).sort(sortFn)
-    const pausedCampaigns = filtered.filter((c) => !c.is_active).sort(sortFn)
+    const active = campaigns.filter((c) => c.is_active)
+    const classRank = (c: ClientCampaign) =>
+      campaignClass(c) === "primary" ? 0 : 1
+    const pausedSort = (a: ClientCampaign, b: ClientCampaign) =>
+      classRank(a) !== classRank(b) ? classRank(a) - classRank(b) : sortFn(a, b)
 
-    return { active: activeCampaigns, paused: pausedCampaigns }
-  }, [filtered])
+    return {
+      activePrimary: active.filter((c) => campaignClass(c) === "primary").sort(sortFn),
+      activeFollowUp: active.filter((c) => campaignClass(c) === "follow_up").sort(sortFn),
+      activeReferral: active.filter((c) => campaignClass(c) === "referral").sort(sortFn),
+      paused: campaigns.filter((c) => !c.is_active).sort(pausedSort),
+    }
+  }, [campaigns])
 
   const periodLabel = TIME_RANGE_OPTIONS.find((o) => o.value === timeRange)?.label ?? "All Time"
 
@@ -412,21 +410,8 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
 
   return (
     <div className="space-y-6">
-      {/* Filter bar */}
+      {/* Filter bar — the old Type dropdown became real sections below (Phase 5) */}
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm text-muted-foreground">Type:</span>
-        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as TypeFilter)}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="primary">Primary</SelectItem>
-            <SelectItem value="follow_up">Follow-up</SelectItem>
-            <SelectItem value="referral">Referral</SelectItem>
-          </SelectContent>
-        </Select>
-
         <span className="text-sm text-muted-foreground">Period:</span>
         <Select value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
           <SelectTrigger className="w-[160px]">
@@ -444,7 +429,7 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
         <div className="ml-auto flex items-center gap-3">
           <DataAsOf factDate={latestCampaignDate} />
           <span className="text-xs text-muted-foreground">
-            {filtered.length} campaign{filtered.length !== 1 ? "s" : ""}
+            {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""}
           </span>
           {campaigns.length >= 2 && (
             <Button
@@ -485,18 +470,87 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
         </div>
       </div>
 
-      {/* Active Campaigns */}
-      {active.length > 0 && (
+      {/* Active Campaigns — PRIMARY outbound only (Phase 5 section split) */}
+      {activePrimary.length > 0 && (
         <div className="space-y-2">
           <h3 className="flex items-center gap-2 text-sm font-medium">
             <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
             Active Campaigns
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-normal text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-              {active.length}
+              {activePrimary.length}
+            </span>
+            <span className="text-xs font-normal text-muted-foreground">
+              primary outbound
             </span>
           </h3>
           <div className="space-y-2">
-            {active.map((campaign) => (
+            {activePrimary.map((campaign) => (
+              <CampaignCard
+                key={campaign.id}
+                campaign={campaign}
+                isExpanded={expandedId === campaign.smartlead_campaign_id}
+                onToggle={() =>
+                  setExpandedId(
+                    expandedId === campaign.smartlead_campaign_id
+                      ? null
+                      : campaign.smartlead_campaign_id
+                  )
+                }
+                onStatusChange={handleStatusChange}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Follow-up Campaigns — reply-triggered subsequences */}
+      {activeFollowUp.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            <span className="inline-block h-2 w-2 rounded-full bg-sky-500" />
+            Follow-up Campaigns
+            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-normal text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+              {activeFollowUp.length}
+            </span>
+            <span className="text-xs font-normal text-muted-foreground">
+              reply-triggered follow-ups — low volume by design
+            </span>
+          </h3>
+          <div className="space-y-2">
+            {activeFollowUp.map((campaign) => (
+              <CampaignCard
+                key={campaign.id}
+                campaign={campaign}
+                isExpanded={expandedId === campaign.smartlead_campaign_id}
+                onToggle={() =>
+                  setExpandedId(
+                    expandedId === campaign.smartlead_campaign_id
+                      ? null
+                      : campaign.smartlead_campaign_id
+                  )
+                }
+                onStatusChange={handleStatusChange}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Referral Campaigns */}
+      {activeReferral.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            <span className="inline-block h-2 w-2 rounded-full bg-violet-500" />
+            Referral Campaigns
+            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-normal text-violet-700 dark:bg-violet-950 dark:text-violet-300">
+              {activeReferral.length}
+            </span>
+            <span className="text-xs font-normal text-muted-foreground">
+              referral outreach
+            </span>
+          </h3>
+          <div className="space-y-2">
+            {activeReferral.map((campaign) => (
               <CampaignCard
                 key={campaign.id}
                 campaign={campaign}
@@ -562,11 +616,11 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
       )}
 
       {/* Empty state */}
-      {filtered.length === 0 && (
+      {campaigns.length === 0 && (
         <div className="flex h-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-center">
-          <p className="text-sm font-medium">No campaigns match these filters</p>
+          <p className="text-sm font-medium">No campaigns yet</p>
           <p className="text-xs text-muted-foreground">
-            Try a different type or period.
+            Campaigns appear here once the performance sync sees them.
           </p>
         </div>
       )}

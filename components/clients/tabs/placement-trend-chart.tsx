@@ -31,9 +31,9 @@ const LINE_COLORS = [
 ]
 
 export function PlacementTrendChart({ results }: PlacementTrendChartProps) {
-  const { chartData, campaignNames, hasEnoughData, yMin } = useMemo(() => {
+  const { chartData, campaignNames, testCounts, hasEnoughData, yMin } = useMemo(() => {
     if (results.length === 0) {
-      return { chartData: [], campaignNames: [], hasEnoughData: false, yMin: 0 }
+      return { chartData: [], campaignNames: [], testCounts: new Map<string, number>(), hasEnoughData: false, yMin: 0 }
     }
 
     // Filter to last 30 days. Also drop empty result rows (null inbox_pct /
@@ -49,12 +49,17 @@ export function PlacementTrendChart({ results }: PlacementTrendChartProps) {
         (r.total_seeds ?? 0) > 0
     )
 
-    if (filtered.length < 2) {
-      return { chartData: [], campaignNames: [], hasEnoughData: false, yMin: 0 }
+    // Phase 5: a single test is DATA — render it as a visible dot with a
+    // "1 test" note instead of hiding the chart behind a 2+ gate.
+    if (filtered.length < 1) {
+      return { chartData: [], campaignNames: [], testCounts: new Map<string, number>(), hasEnoughData: false, yMin: 0 }
     }
 
-    // Get unique campaign names
+    // Get unique campaign names + how many tests each has in the window
     const names = [...new Set(filtered.map((r) => r.campaign_name))]
+    const testCounts = new Map<string, number>(
+      names.map((n) => [n, filtered.filter((r) => r.campaign_name === n).length])
+    )
 
     // Pivot: each date becomes a row with campaign names as columns
     const dateMap = new Map<string, Record<string, number | null>>()
@@ -80,6 +85,7 @@ export function PlacementTrendChart({ results }: PlacementTrendChartProps) {
     return {
       chartData: pivoted,
       campaignNames: names,
+      testCounts,
       hasEnoughData: true,
       yMin: computedYMin,
     }
@@ -90,7 +96,7 @@ export function PlacementTrendChart({ results }: PlacementTrendChartProps) {
       <div className="flex flex-col items-center justify-center py-8 text-center">
         <TrendingUp className="h-8 w-8 text-muted-foreground/50" />
         <p className="mt-2 text-sm text-muted-foreground">
-          Need 2+ data points to show placement trends.
+          No placement tests in the last 30 days.
         </p>
       </div>
     )
@@ -165,6 +171,9 @@ export function PlacementTrendChart({ results }: PlacementTrendChartProps) {
             wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
             iconType="circle"
             iconSize={8}
+            formatter={(value: string) =>
+              testCounts.get(value) === 1 ? `${value} (1 test)` : value
+            }
           />
           {campaignNames.map((name, i) => (
             <Line
@@ -173,8 +182,8 @@ export function PlacementTrendChart({ results }: PlacementTrendChartProps) {
               dataKey={name}
               stroke={LINE_COLORS[i % LINE_COLORS.length]}
               strokeWidth={2}
-              dot={{ r: 3 }}
-              activeDot={{ r: 5 }}
+              dot={{ r: testCounts.get(name) === 1 ? 5 : 3 }}
+              activeDot={{ r: 6 }}
               connectNulls
               animationDuration={800}
             />

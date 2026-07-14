@@ -20,7 +20,7 @@ import {
 } from "recharts"
 import { cn } from "@/lib/utils"
 import { Trophy } from "lucide-react"
-import type { ClientCampaign, CampaignDetailPoint } from "@/lib/queries/campaigns"
+import type { ClientCampaign, CampaignDetailPoint, PlacementTestResult } from "@/lib/queries/campaigns"
 
 const COMPARISON_COLORS = [
   "#2563eb", // blue
@@ -38,6 +38,9 @@ interface ComparisonData {
   campaignId: number
   campaignName: string
   history: CampaignDetailPoint[]
+  /** Latest inbox-placement test (the detail API already returns it — the
+      dialog previously dropped it and showed a "view details" note). */
+  placement: PlacementTestResult | null
 }
 
 function truncate(str: string, max: number): string {
@@ -92,6 +95,7 @@ export function CampaignComparisonDialog({
           campaignId,
           campaignName: campaign.campaign_name,
           history: data.history ?? [],
+          placement: data.placement ?? null,
         })
       }
       setComparisonData(results)
@@ -269,11 +273,56 @@ export function CampaignComparisonDialog({
               yFormatter={(v) => `${Number(v).toFixed(1)}%`}
             />
 
-            {/* Inbox Placement summary */}
+            {/* Inbox Placement — latest test per campaign, side by side (Phase 5) */}
             <div className="rounded-lg border p-4">
-              <h4 className="mb-2 text-sm font-medium">Inbox Placement</h4>
-              <p className="text-xs text-muted-foreground">
-                Placement data is point-in-time. View individual campaign details for inbox placement results.
+              <h4 className="mb-3 text-sm font-medium">Inbox Placement — latest test</h4>
+              <div className="space-y-2.5">
+                {comparisonData.map((cd, ci) => {
+                  const pl = cd.placement
+                  const inbox = pl?.inbox_pct ?? null
+                  const barColor =
+                    inbox === null
+                      ? ""
+                      : inbox > 90
+                        ? "bg-emerald-500"
+                        : inbox >= 70
+                          ? "bg-amber-500"
+                          : "bg-rose-500"
+                  return (
+                    <div key={cd.campaignId} className="flex items-center gap-3">
+                      <span
+                        className="w-40 shrink-0 truncate text-xs"
+                        style={{ color: COMPARISON_COLORS[ci % COMPARISON_COLORS.length] }}
+                        title={cd.campaignName}
+                      >
+                        {truncate(cd.campaignName, 24)}
+                      </span>
+                      {inbox === null ? (
+                        <span className="text-xs text-muted-foreground">No placement tests</span>
+                      ) : (
+                        <>
+                          <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className={`h-full rounded-full ${barColor}`}
+                              style={{ width: `${Math.min(100, Math.max(0, inbox))}%` }}
+                            />
+                          </div>
+                          <span className="w-12 text-right text-xs font-semibold tabular-nums">
+                            {inbox.toFixed(0)}%
+                          </span>
+                          <span className="w-24 shrink-0 text-right text-[10px] text-muted-foreground">
+                            {pl?.test_date
+                              ? new Date(pl.test_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                              : ""}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                Inbox % from each campaign's most recent seed test — point-in-time, dates differ per campaign.
               </p>
             </div>
 

@@ -2,14 +2,11 @@ import { Mail, ThumbsUp, MessageCircle, Percent, AlertTriangle, ArrowRight } fro
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { MetricCard } from "@/components/shared/metric-card"
-import { MiniSendChart } from "@/components/clients/mini-send-chart"
-import { SendReplyChart } from "@/components/clients/send-reply-chart"
-import { RepliesChart } from "@/components/clients/replies-chart"
-import { PerformanceMetrics } from "@/components/clients/performance-metrics"
+import { OverviewPerformance } from "@/components/clients/overview-performance"
 import { ReadyBankCard } from "@/components/clients/ready-bank-card"
 import { RunwayCapacityWidget } from "@/components/clients/runway-capacity-widget"
 import { replyRateColor, alertSeverityColor } from "@/lib/design-tokens"
-import { getClientRecentHistory, getClientSendReplyHistory, getClientReplyHistory, getClientPerformanceHistory, getClientProviderSplit } from "@/lib/queries/analytics"
+import { getClientPerformanceHistory, getClientProviderSplit } from "@/lib/queries/analytics"
 import { getClientRecipientSplit } from "@/lib/queries/portfolio"
 import { ProviderSplitCard } from "@/components/clients/provider-split-card"
 import { getClientAlerts } from "@/lib/queries/clients"
@@ -26,8 +23,8 @@ interface OverviewTabProps {
   config: ClientConfig
   alertCount: number
   /** Custom date range (?from/?to, already format-validated by the page) —
-      drives the performance-metrics KPIs (Phase 4); the chart suite follows
-      in Phase 5's rebuild. */
+      drives the range-scoped KPIs AND the three-chart suite (Phase 4 picker,
+      Phase 5 charts). */
   customFrom?: string
   customTo?: string
 }
@@ -40,22 +37,14 @@ export async function OverviewTab({
   customFrom,
   customTo,
 }: OverviewTabProps) {
-  // A custom range may reach further back than the default 60-day history
-  // window — widen the fetch to cover it (capped at a year).
-  let historyDays = 60
-  if (customFrom) {
-    const from = new Date(`${customFrom}T00:00:00Z`)
-    const days = Math.ceil((Date.now() - from.getTime()) / 86_400_000) + 1
-    historyDays = Math.min(365, Math.max(60, days))
-  }
-
-  const [history, sendReplyHistory, topAlerts, totalReplies, replyData, performanceHistory, providerSplit, recipientSplit, readyBank] = await Promise.all([
-    getClientRecentHistory(clientSlug, 7),
-    getClientSendReplyHistory(clientSlug, 14),
+  // ONE wide history fetch feeds the KPI cards AND all three charts (V2
+  // Phase 5) — the range presets + custom picker filter it client-side, so
+  // switches are instant. 365 days comfortably covers "All Time" (facts
+  // begin 2026-06-09) and any custom range worth charting.
+  const [topAlerts, totalReplies, performanceHistory, providerSplit, recipientSplit, readyBank] = await Promise.all([
     getClientAlerts(clientSlug, false, 3),
     getClientTotalReplies(clientSlug),
-    getClientReplyHistory(clientSlug, 30),
-    getClientPerformanceHistory(clientSlug, historyDays),
+    getClientPerformanceHistory(clientSlug, 365),
     getClientProviderSplit(clientSlug, 14),
     getClientRecipientSplit(clientSlug, 14),
     getClientReadyBank(clientSlug),
@@ -82,13 +71,7 @@ export async function OverviewTab({
 
   return (
     <div className="space-y-6">
-      {/* Performance Metrics with Time Range Toggles */}
-      <PerformanceMetrics
-        history={performanceHistory}
-        customRange={customFrom ? { from: customFrom, to: customTo } : undefined}
-      />
-
-      {/* KPI Cards */}
+      {/* Latest-day + all-time KPI row */}
       <div className="flex justify-end mb-1">
         <SectionFreshness factDate={latestSnapshot?.snapshot_date} />
       </div>
@@ -119,50 +102,14 @@ export async function OverviewTab({
         />
       </div>
 
-      {/* Mini Send Chart */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-medium">
-            Sends — Last 7 Days
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <MiniSendChart
-            data={history}
-            dailyTarget={config.daily_email_target ?? 0}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Send Volume + Reply Rate Chart */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-medium">
-            Sends &amp; Reply Rate — Last 14 Days
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SendReplyChart
-            data={sendReplyHistory}
-            dailyTarget={config.daily_email_target ?? 0}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Positive Replies Chart */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-medium">
-            Replies — Last 30 Days
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <RepliesChart
-            data={replyData.history}
-            totalInterested={replyData.totalInterested}
-          />
-        </CardContent>
-      </Card>
+      {/* Range-scoped KPIs + the confirmed three-chart suite (V2 Phase 5):
+          sends vs target · reply rate trend + change · positive replies.
+          Replaces the old 7d/14d/30d fixed-window chart trio. */}
+      <OverviewPerformance
+        history={performanceHistory}
+        config={config}
+        customRange={customFrom ? { from: customFrom, to: customTo } : undefined}
+      />
 
       {/* Provider Performance (sender infrastructure + recipient inbox split) */}
       <ProviderSplitCard rows={providerSplit} days={14} recipient={recipientSplit} />
