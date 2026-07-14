@@ -76,6 +76,22 @@ Per Amzat: the V2 data-accuracy validation is done fresh in Phase 2 — treat pr
 
 _(sessions append findings here — newest first)_
 
+### 2026-07-14 (evening) — Phase 4 done (make it feel alive)
+
+Commit `1f6fa9d`, deployed + prod-verified. **Acceptance measured on production, from the browser's own mousedown to the pressed-state paint** (`e2e/feedback-timing.spec.ts`, `MEASURE=1` opt-in):
+
+| Interaction | BEFORE (prod) | AFTER (prod) | Target |
+|---|---|---|---|
+| Client tab click | 2,714–4,377 ms | **4–13 ms** | <100 ms |
+| CC range switch | 1,544–1,783 ms | **4–10 ms** | <100 ms |
+
+- **Architecture (answer #14):** `clients/[slug]/page.tsx` renders ONLY the active tab (validated `?tab`) inside `<Suspense>` with a per-tab skeleton — inactive tabs run zero queries (Mailboxes' eleven no longer tax every click; placement results moved into the Placement tab). `ClientTabs` is pure navigation with TWO optimistic states at different priorities: pressed flip commits urgently (same-frame paint), the chart-heavy body→skeleton swap runs inside the transition (recharts unmounts cost 100–300 ms and were holding the paint hostage when done in one commit). Same pattern for the CC range switch (`RangeTransitionProvider` + `RangeVeil` dim exactly the range-scoped regions).
+- **Custom date range:** from–to picker beside the This Week/Month/All presets (`?from`/`?to`, server-validated), driving the performance KPIs with a "Custom" pressed chip + vs-preceding-equal-period trends; history fetch widens to cover the range (cap 365d). Charts follow in Phase 5 per the plan's own wording ("extended to respect the selected range and date picker" is listed under Phase 5 chart 1).
+- **Route skeletons:** CC `loading.tsx` refreshed to the post-Phase-1 layout (was 6-KPI + sync-panel shaped); client `loading.tsx` mirrors the real tab set and reuses the same `TabSkeleton`. All other routes verified covered (`analytics/*` are pure redirects, no skeleton needed).
+- **GOTCHA (cost ~40 min):** exporting a function from a `"use client"` module and CALLING it in a server component passes tsc AND `next build`, then throws at runtime ("Attempted to call isTabValue() from the server") — and the e2e suite ran 18 min with 8 tests silently missing while pages error-boundaried. Registry now lives in `components/clients/tab-config.ts` (plain module); client-tabs re-exports the TYPE only. If a future e2e run's passed+skipped count doesn't sum to `npx playwright test --list`'s total, treat it as a broken build, not flake.
+- **Measurement gotcha:** clock from arm-time billed Playwright's click actionability machinery (~150–400 ms) to the app — the spec measures from the element's own `mousedown`. The BEFORE numbers are unaffected at seconds scale.
+- Local e2e on the final build: 35 passed / 3 expected skips (2 MEASURE-gated, 1 SCREENSHOTS-gated), 2.1 m. Prod suite re-run post-deploy green (see log `e2e-prod-full.log` note in commit).
+
 ### 2026-07-14 (later) — Phase 3 done (fix the math, definitions, links + backfill)
 
 Executed the full fix list from `V2-AUDIT-FINDINGS.md` the same day as the audit; the resolution table (per-RC status + re-verification) lives in that doc. Highlights + operational notes:
