@@ -6,7 +6,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
 const TAB_CONFIG = [
   { value: "overview", label: "Overview" },
-  { value: "interested", label: "Interested Leads" },
+  { value: "interested", label: "Positive Replies" },
   { value: "campaigns", label: "Campaigns" },
   { value: "pipelines", label: "Pipelines" },
   { value: "mailboxes", label: "Mailboxes" },

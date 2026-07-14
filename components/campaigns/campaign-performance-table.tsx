@@ -224,7 +224,7 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange }: Campai
             <div className={cn("text-xl font-bold tabular-nums", rateColors?.text)}>
               {replyRate !== null ? `${replyRate.toFixed(1)}%` : "\u2014"}
             </div>
-            <div className="text-[10px] text-muted-foreground">Reply Rate</div>
+            <div className="text-[10px] text-muted-foreground">Positive Reply Rate</div>
           </div>
 
           {/* Sent + Interested numbers (mini sparklines removed \u2014 V2 Phase 1) */}

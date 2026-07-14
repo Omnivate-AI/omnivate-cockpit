@@ -48,10 +48,21 @@ export async function OverviewTab({
   const emailsSent = latestSnapshot?.emails_sent_count ?? null
   const positiveReplies = latestSnapshot?.positive_replies_count ?? null
   const allTimeSent = latestSnapshot?.all_time_emails_sent ?? 0
-  const allTimeInterested = latestSnapshot?.all_time_interested ?? 0
-  const replyRate = allTimeSent > 0 ? (allTimeInterested / allTimeSent) * 100 : null
+  // Reply rate = TOTAL replies ÷ sent, all-time, labeled as such (RC-4 —
+  // this card previously computed all-time INTERESTED ÷ sent, the same
+  // ~0.1% formula Omar rejected on the Command Center).
+  const allTimeReplies = latestSnapshot?.all_time_replies ?? totalReplies
+  const replyRate = allTimeSent > 0 ? (allTimeReplies / allTimeSent) * 100 : null
   const replyRateDisplay = replyRate !== null ? `${replyRate.toFixed(1)}%` : "No Data"
   const replyRateColors = replyRate !== null ? replyRateColor(replyRate) : null
+  // Latest business day, shown in the card labels (facts are weekday-only,
+  // so "Yesterday" would lie on Sun/Mon — RC-3)
+  const factDayLabel = latestSnapshot?.snapshot_date
+    ? new Date(`${latestSnapshot.snapshot_date}T00:00:00Z`).toLocaleDateString(
+        "en-GB",
+        { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }
+      )
+    : "latest day"
 
   return (
     <div className="space-y-6">
@@ -65,25 +76,27 @@ export async function OverviewTab({
       {/* Mailbox summary card removed — the Mailboxes tab owns that story (V2 Phase 1) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          title="Emails Sent Yesterday"
+          title={`Emails Sent (${factDayLabel})`}
           value={emailsSent !== null ? emailsSent.toLocaleString() : "No Data"}
           icon={Mail}
         />
         <MetricCard
-          title="Interested Replies"
+          title={`Positive Replies (${factDayLabel})`}
           value={positiveReplies !== null ? positiveReplies.toLocaleString() : "No Data"}
           icon={ThumbsUp}
+          subtitle="Interested + human-action-required"
         />
         <MetricCard
-          title="Total Replies"
+          title="Total Replies (all-time)"
           value={totalReplies.toLocaleString()}
           icon={MessageCircle}
         />
         <MetricCard
-          title="Reply Rate"
+          title="Reply Rate (all-time)"
           value={replyRateDisplay}
           icon={Percent}
           valueColor={replyRateColors?.text}
+          subtitle="Total replies ÷ emails sent"
         />
       </div>
 

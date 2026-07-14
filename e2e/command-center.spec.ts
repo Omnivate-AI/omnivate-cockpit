@@ -33,7 +33,7 @@ test("V2 Phase 1 removals stay removed", async ({ page }) => {
 
 test("KPI cards render", async ({ page }) => {
   for (const title of [
-    "Interested Replies",
+    "Positive Replies",
     "Total Replies",
   ]) {
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible()

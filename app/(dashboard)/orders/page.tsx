@@ -84,7 +84,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             Orders &amp; Spend
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            InboxKit infrastructure orders — spend counts completed orders only
+            Orders placed via this system (since Jun 2026) — spend counts completed orders only; the original client pools predate order tracking
           </p>
           <SectionFreshness mode="db" prefix="Live orders" className="mt-1.5" />
         </div>

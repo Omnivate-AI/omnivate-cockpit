@@ -142,6 +142,9 @@ export function aggregateSnapshots(
     base.daily_email_target += s.daily_email_target ?? 0
     base.all_time_emails_sent += s.all_time_emails_sent ?? 0
     base.all_time_interested += s.all_time_interested ?? 0
+    base.all_time_replies = (base.all_time_replies ?? 0) + (s.all_time_replies ?? 0)
+    base.active_mailboxes =
+      (base.active_mailboxes ?? 0) + (s.active_mailboxes ?? 0)
     base.leads_not_started += s.leads_not_started ?? 0
     base.leads_in_progress += s.leads_in_progress ?? 0
     base.leads_completed += s.leads_completed ?? 0
@@ -246,6 +249,8 @@ function buildSnapshot(params: {
     primary_active_campaigns: pr?.primary_active_campaigns ?? undefined,
     all_time_emails_sent: lifetime?.all_time_emails_sent ?? 0,
     all_time_interested: lifetime?.all_time_interested ?? 0,
+    all_time_replies: lifetime?.all_time_replies ?? 0,
+    active_mailboxes: health?.active ?? undefined,
   }
 }
 
@@ -307,6 +312,36 @@ async function fetchClientBundles(slugs: string[]) {
   }
 }
 
+// --- Range anchoring (V2 Phase 3, RC-3) ---
+
+/**
+ * Latest business day with fact rows — the anchor every range counts back
+ * from. Facts are business-day-only (the sync deliberately skips weekend
+ * dates), so a calendar `today − days` cutoff matched ZERO rows all Sunday
+ * and Monday and the Command Center read all zeros for ~48h every week.
+ */
+export const getLatestFactDate = cache(async (): Promise<string | null> => {
+  const supabase = createServerClient()
+  const { data } = await supabase
+    .from("vw_cockpit_freshness")
+    .select("latest_fact_date")
+    .maybeSingle()
+  return (data?.latest_fact_date as string | null) ?? null
+})
+
+/**
+ * The `days` calendar days ENDING AT the latest fact date. days=1 → exactly
+ * the latest fact date ("yesterday" in business-day terms).
+ */
+export async function rangeWindow(
+  days: number
+): Promise<{ cutoff: string; anchor: string | null }> {
+  const anchor = await getLatestFactDate()
+  const end = anchor ? new Date(`${anchor}T00:00:00Z`) : new Date()
+  end.setUTCDate(end.getUTCDate() - (days - 1))
+  return { cutoff: end.toISOString().split("T")[0], anchor }
+}
+
 // --- Interfaces ---
 
 export interface GlobalKPIs {
@@ -321,6 +356,13 @@ export interface ClientSummary {
   config: ClientConfig
   latest: ClientSnapshot | null
   alertCount: number
+  /** Σ getTargetForDate over the FACT DATES in the selected range (weekday
+      JSON respected). The old `daily_target × calendar days` compared 5
+      business days of sends against 7 days of target (RC-5). */
+  periodTarget: number
+  /** Total replies in the range — reply-rate numerator (total replies,
+      matching the Command Center KPI; RC-4). */
+  periodReplies: number
 }
 
 export interface DailySendDataPoint {
@@ -335,9 +377,7 @@ export const getGlobalKPIs = cache(async (days: number = 1): Promise<GlobalKPIs>
   const supabase = createServerClient()
   const activeSlugs = await getActiveClients()
 
-  const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - days)
-  const cutoffStr = cutoff.toISOString().split("T")[0]
+  const { cutoff: cutoffStr } = await rangeWindow(days)
 
   const perfRes = await supabase
     .from("vw_cockpit_daily_client_perf")
@@ -378,9 +418,7 @@ export const getClientSummaries = cache(
   async (days: number = 1): Promise<ClientSummary[]> => {
     const supabase = createServerClient()
 
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
-    const cutoffStr = cutoff.toISOString().split("T")[0]
+    const { cutoff: cutoffStr, anchor } = await rangeWindow(days)
 
     // 1. Active clients from sp_clients; targets/hierarchy from app config
     const activeSlugs = await getActiveClients()
@@ -409,11 +447,40 @@ export const getClientSummaries = cache(
 
     const latestByClient = new Map<string, PerfRow>()
     const periodSendsByClient = new Map<string, number>()
+    const periodRepliesByClient = new Map<string, number>()
+    const factDatesByClient = new Map<string, string[]>()
     for (const r of (perfRows ?? []) as PerfRow[]) {
       if (!latestByClient.has(r.client)) latestByClient.set(r.client, r)
       periodSendsByClient.set(
         r.client,
         (periodSendsByClient.get(r.client) ?? 0) + (r.emails_sent_count ?? 0)
+      )
+      periodRepliesByClient.set(
+        r.client,
+        (periodRepliesByClient.get(r.client) ?? 0) + (r.reply_count ?? 0)
+      )
+      const dates = factDatesByClient.get(r.client) ?? []
+      dates.push(r.snapshot_date)
+      factDatesByClient.set(r.client, dates)
+    }
+
+    // Period target = the client's target summed over the fact dates that
+    // actually exist in the window (respects the daily_targets weekday JSON
+    // the chart already used — RC-5). A client with no fact rows falls back
+    // to one anchor-day target so "not sending" reads as red 0%, not "no
+    // target set".
+    const periodTargetFor = (config: ClientConfig): number => {
+      const dates = factDatesByClient.get(config.client) ?? []
+      const targets = (config.daily_targets as DailyTargets | null) ?? null
+      if (dates.length === 0) {
+        return anchor
+          ? getTargetForDate(anchor, config.daily_email_target ?? 0, targets)
+          : config.daily_email_target ?? 0
+      }
+      return dates.reduce(
+        (sum, d) =>
+          sum + getTargetForDate(d, config.daily_email_target ?? 0, targets),
+        0
       )
     }
 
@@ -477,6 +544,8 @@ export const getClientSummaries = cache(
         config,
         latest: snapshotFor(config.client, config),
         alertCount: alertCounts.get(config.client) ?? 0,
+        periodTarget: periodTargetFor(config),
+        periodReplies: periodRepliesByClient.get(config.client) ?? 0,
       })
     }
 
@@ -518,6 +587,14 @@ export const getClientSummaries = cache(
         config: parentConfig,
         latest: aggregated,
         alertCount: totalAlerts,
+        periodTarget: childConfigs.reduce(
+          (sum, c) => sum + periodTargetFor(c),
+          0
+        ),
+        periodReplies: childConfigs.reduce(
+          (sum, c) => sum + (periodRepliesByClient.get(c.client) ?? 0),
+          0
+        ),
       })
     }
 
@@ -534,8 +611,7 @@ export const getClientSnapshot = cache(
     const supabase = createServerClient()
     const slugs = await resolveClientSlugs(client)
 
-    const since = new Date()
-    since.setDate(since.getDate() - 14)
+    const { cutoff } = await rangeWindow(14)
 
     const [{ data: perfRows }, bundles, { data: configRows }] =
       await Promise.all([
@@ -543,7 +619,7 @@ export const getClientSnapshot = cache(
           .from("vw_cockpit_daily_client_perf")
           .select("*")
           .in("client", slugs)
-          .gte("snapshot_date", since.toISOString().split("T")[0])
+          .gte("snapshot_date", cutoff)
           .order("snapshot_date", { ascending: false }),
         fetchClientBundles(slugs),
         supabase
@@ -593,9 +669,7 @@ export const getClientRecentHistory = cache(
     const supabase = createServerClient()
     const slugs = await resolveClientSlugs(client)
 
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
-    const cutoffStr = cutoff.toISOString().split("T")[0]
+    const { cutoff: cutoffStr } = await rangeWindow(days)
 
     const { data: rows } = await supabase
       .from("vw_cockpit_daily_client_perf")
@@ -630,9 +704,7 @@ export const getClientSendReplyHistory = cache(
     const supabase = createServerClient()
     const slugs = await resolveClientSlugs(client)
 
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
-    const cutoffStr = cutoff.toISOString().split("T")[0]
+    const { cutoff: cutoffStr } = await rangeWindow(days)
 
     const { data: rows } = await supabase
       .from("vw_cockpit_daily_client_perf")
@@ -696,9 +768,7 @@ export const getClientReplyHistory = cache(
     const supabase = createServerClient()
     const slugs = await resolveClientSlugs(client)
 
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
-    const cutoffStr = cutoff.toISOString().split("T")[0]
+    const { cutoff: cutoffStr } = await rangeWindow(days)
 
     const [{ data: rows }, { data: lifetimeRows }] = await Promise.all([
       supabase
@@ -757,9 +827,7 @@ export const getClientPerformanceHistory = cache(
     const supabase = createServerClient()
     const slugs = await resolveClientSlugs(client)
 
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
-    const cutoffStr = cutoff.toISOString().split("T")[0]
+    const { cutoff: cutoffStr } = await rangeWindow(days)
 
     const { data: rows } = await supabase
       .from("vw_cockpit_daily_client_perf")
@@ -809,9 +877,7 @@ export const getClientComparisonData = cache(
   async (clients: string[], days: number = 14): Promise<ClientComparisonData> => {
     const supabase = createServerClient()
 
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
-    const cutoffStr = cutoff.toISOString().split("T")[0]
+    const { cutoff: cutoffStr } = await rangeWindow(days)
 
     const [{ data: perfRows }, { data: healthRows }] = await Promise.all([
       supabase
@@ -888,9 +954,7 @@ export const getDailySendHistory = cache(
     const supabase = createServerClient()
     const activeSlugs = await getActiveClients()
 
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
-    const cutoffStr = cutoff.toISOString().split("T")[0]
+    const { cutoff: cutoffStr } = await rangeWindow(days)
 
     const [{ data: configs }, { data: rows }] = await Promise.all([
       supabase
@@ -977,14 +1041,13 @@ export const getClientProviderSplit = cache(
     const supabase = createServerClient()
     const slugs = await resolveClientSlugs(client)
 
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
+    const { cutoff } = await rangeWindow(days)
 
     const { data } = await supabase
       .from("vw_cockpit_provider_daily")
       .select("*")
       .in("client", slugs)
-      .gte("snapshot_date", cutoff.toISOString().split("T")[0])
+      .gte("snapshot_date", cutoff)
 
     const byProvider = new Map<string, ProviderSplitRow>()
     for (const r of data ?? []) {
@@ -1053,8 +1116,7 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
       overallReplyRate: 0,
     }
 
-  const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - 7)
+  const { cutoff: cutoffStr } = await rangeWindow(7)
 
   const [{ data: configRows }, { data: perfRows }, { data: lifetimeRows }] =
     await Promise.all([
@@ -1066,7 +1128,7 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
         .from("vw_cockpit_daily_client_perf")
         .select("*")
         .in("client", activeSlugs)
-        .gte("snapshot_date", cutoff.toISOString().split("T")[0])
+        .gte("snapshot_date", cutoffStr)
         .order("snapshot_date", { ascending: false }),
       supabase
         .from("vw_cockpit_client_lifetime")
@@ -1118,7 +1180,7 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
   ): DigestClientRow {
     let sent = 0,
       interested = 0,
-      totalR = 0,
+      dayReplies = 0,
       allTimeSent = 0,
       allTimeInt = 0
     for (const cs of childSlugs) {
@@ -1126,13 +1188,12 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
       if (snap) {
         sent += snap.emails_sent_count ?? 0
         interested += snap.positive_replies_count ?? 0
+        dayReplies += snap.reply_count ?? 0
       }
       const lt = lifetimeByClient.get(cs)
       if (lt) {
         allTimeSent += lt.all_time_emails_sent ?? 0
         allTimeInt += lt.all_time_interested ?? 0
-        // "Total Replies" in the digest is lifetime (matches the old model)
-        totalR += lt.all_time_replies ?? 0
       }
     }
     return {
@@ -1140,8 +1201,12 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
       displayName,
       emailsSent: sent,
       interestedReplies: interested,
-      totalReplies: totalR,
-      replyRate: allTimeSent > 0 ? (allTimeInt / allTimeSent) * 100 : 0,
+      // Interim (RC-7; page merges into the Command Center in Phase 9):
+      // every number in the row is now the LATEST BUSINESS DAY — the old mix
+      // (day sends beside lifetime replies and an all-time interested rate)
+      // put three time scopes in one table row.
+      totalReplies: dayReplies,
+      replyRate: sent > 0 ? (dayReplies / sent) * 100 : 0,
       allTimeEmailsSent: allTimeSent,
       allTimeInterested: allTimeInt,
     }
@@ -1164,8 +1229,6 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
   const totalSent = clientRows.reduce((s, c) => s + c.emailsSent, 0)
   const totalInterested = clientRows.reduce((s, c) => s + c.interestedReplies, 0)
   const totalReplies = clientRows.reduce((s, c) => s + c.totalReplies, 0)
-  const totalAllTimeSent = clientRows.reduce((s, c) => s + c.allTimeEmailsSent, 0)
-  const totalAllTimeInt = clientRows.reduce((s, c) => s + c.allTimeInterested, 0)
 
   const latestDate = Array.from(latestByClient.values()).reduce<string | null>(
     (max, r) => (max === null || r.snapshot_date > max ? r.snapshot_date : max),
@@ -1178,7 +1241,8 @@ export const getDigestData = cache(async (): Promise<DigestData> => {
     totalSent,
     totalInterested,
     totalReplies,
-    overallReplyRate:
-      totalAllTimeSent > 0 ? (totalAllTimeInt / totalAllTimeSent) * 100 : 0,
+    // Same scope as every other headline on the page (latest business day) —
+    // the old all-time interested/sent (0.11%) sat beside day-scoped numbers.
+    overallReplyRate: totalSent > 0 ? (totalReplies / totalSent) * 100 : 0,
   }
 })

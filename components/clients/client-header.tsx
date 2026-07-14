@@ -84,10 +84,14 @@ export function ClientHeader({
   const config = STATUS_CONFIG[status]
 
   const totalSent = latestSnapshot?.all_time_emails_sent ?? 0
-  const interested = latestSnapshot?.all_time_interested ?? 0
-  const replyRateNum = totalSent > 0 ? (interested / totalSent) * 100 : 0
+  // Reply rate = TOTAL replies ÷ sent (all-time, labeled as such). The old
+  // numerator was all-time INTERESTED — the exact 0.1% formula Omar rejected
+  // on the Command Center, still live here until V2 Phase 3 (RC-4).
+  const totalReplies = latestSnapshot?.all_time_replies ?? 0
+  const replyRateNum = totalSent > 0 ? (totalReplies / totalSent) * 100 : 0
   const replyRate = totalSent > 0 ? replyRateNum.toFixed(1) : "0"
   const mailboxCount = latestSnapshot?.mailbox_count ?? 0
+  const activeMailboxes = latestSnapshot?.active_mailboxes
 
   return (
     <div
@@ -127,20 +131,31 @@ export function ClientHeader({
         <div className="flex items-center gap-6 shrink-0">
           {/* Inline metrics */}
           <div className="hidden sm:flex items-center gap-5">
-            <div className="flex items-center gap-1.5 text-sm">
+            <div
+              className="flex items-center gap-1.5 text-sm"
+              title="All-time emails sent across this client's campaigns"
+            >
               <Mail className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="font-semibold">{formatNumber(totalSent)}</span>
-              <span className="text-muted-foreground">Sent</span>
+              <span className="text-muted-foreground">Sent (all-time)</span>
             </div>
-            <div className="flex items-center gap-1.5 text-sm">
+            <div
+              className="flex items-center gap-1.5 text-sm"
+              title={`Total replies ÷ emails sent, all-time (${formatNumber(totalReplies)} / ${formatNumber(totalSent)})`}
+            >
               <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="font-semibold">{replyRate}%</span>
-              <span className="text-muted-foreground">Reply Rate</span>
+              <span className="text-muted-foreground">Reply Rate (all-time)</span>
             </div>
-            <div className="flex items-center gap-1.5 text-sm">
+            <div
+              className="flex items-center gap-1.5 text-sm"
+              title="Non-retired mailboxes (sending = lifecycle 'active' this week)"
+            >
               <Inbox className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="font-semibold">{mailboxCount}</span>
-              <span className="text-muted-foreground">Mailboxes</span>
+              <span className="text-muted-foreground">
+                Mailboxes{activeMailboxes != null ? ` (${activeMailboxes} sending)` : ""}
+              </span>
             </div>
           </div>
 

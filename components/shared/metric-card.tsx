@@ -14,6 +14,10 @@ export interface MetricCardProps {
   icon: LucideIcon
   valueColor?: string
   trend?: MetricCardTrend
+  /** One-line definition under the value — used where the metric's meaning
+      must be visible, e.g. "Positive Replies = Interested + human-action-
+      required" (decision #1: the definition lives in the UI). */
+  subtitle?: string
 }
 
 const trendConfig = {
@@ -22,7 +26,7 @@ const trendConfig = {
   flat: { icon: ArrowRight, defaultColor: "text-muted-foreground" },
 } as const
 
-export function MetricCard({ title, value, icon: Icon, valueColor, trend }: MetricCardProps) {
+export function MetricCard({ title, value, icon: Icon, valueColor, trend, subtitle }: MetricCardProps) {
   return (
     <Card className="backdrop-blur-sm bg-white/80 dark:bg-card/80 ring-1 ring-black/5 dark:ring-white/10 shadow-sm hover:shadow-md transition-shadow">
       <CardContent className="p-6">
@@ -37,6 +41,11 @@ export function MetricCard({ title, value, icon: Icon, valueColor, trend }: Metr
             >
               {value}
             </p>
+            {subtitle && (
+              <p className="mt-1 text-[11px] leading-tight text-muted-foreground">
+                {subtitle}
+              </p>
+            )}
             {trend && <TrendBadge trend={trend} />}
           </div>
           <div className="rounded-lg bg-stone-100 dark:bg-accent p-2.5">

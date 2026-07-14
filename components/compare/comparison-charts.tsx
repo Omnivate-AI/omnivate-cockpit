@@ -179,7 +179,7 @@ export function ComparisonCharts({
         tooltipFormatter={(val) => val.toLocaleString()}
       />
       <ComparisonChart
-        title="Reply Rate (14 days)"
+        title="Positive Reply Rate (14 days)"
         data={replyRate}
         clients={clients}
         yAxisFormatter={(val) => `${val}%`}

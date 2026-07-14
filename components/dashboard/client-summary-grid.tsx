@@ -39,6 +39,8 @@ export function ClientSummaryGrid({ summaries, periodDays = 1, infraByClient }: 
           latest={s.latest}
           alertCount={s.alertCount}
           periodDays={periodDays}
+          periodTarget={s.periodTarget}
+          periodReplies={s.periodReplies}
           infra={infraByClient?.[s.config.client]}
         />
       ))}

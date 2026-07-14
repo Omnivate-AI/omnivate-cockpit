@@ -19,7 +19,7 @@ test.describe("phase screenshots", () => {
     test.setTimeout(600_000)
 
     const shots: { path: string; url: string; waitFor?: string }[] = [
-      { path: "command-center.png", url: "/", waitFor: "Interested Replies" },
+      { path: "command-center.png", url: "/", waitFor: "Positive Replies" },
       { path: "client-overview.png", url: `/clients/${CLIENT}`, waitFor: "Interested Replies" },
       { path: "client-campaigns.png", url: `/clients/${CLIENT}?tab=campaigns`, waitFor: "Campaign stats synced" },
       { path: "client-mailboxes.png", url: `/clients/${CLIENT}?tab=mailboxes`, waitFor: "Rotation Groups" },

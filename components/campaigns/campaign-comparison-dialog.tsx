@@ -262,7 +262,7 @@ export function CampaignComparisonDialog({
 
             {/* Reply Rate */}
             <ComparisonChart
-              title="Reply Rate (%)"
+              title="Positive Reply Rate (%)"
               data={replyRateData}
               count={comparisonData.length}
               bestPerformer={bestPerformers.replyRate}

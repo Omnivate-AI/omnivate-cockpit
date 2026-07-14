@@ -12,7 +12,9 @@ test("overview tab renders header and KPI grid", async ({
 }) => {
   await page.goto(`/clients/${CLIENT}`)
   await expect(page.getByText("Cylindo").first()).toBeVisible()
-  await expect(page.getByText("Interested Replies").first()).toBeVisible({
+  // V2 Phase 3: "Positive Replies" (Interested + human_action_required,
+  // decision #1), labeled with the latest business day
+  await expect(page.getByText(/^Positive Replies \(/).first()).toBeVisible({
     timeout: 60_000,
   })
   // V2 Phase 1 removals: live strip, mailbox summary KPI, pipeline runway
@@ -25,7 +27,7 @@ test("overview tab renders header and KPI grid", async ({
   })
   for (const tab of [
     "Overview",
-    "Interested Leads",
+    "Positive Replies",
     "Campaigns",
     "Pipelines",
     "Mailboxes",
@@ -46,9 +48,9 @@ test("interested leads tab renders table or explicit empty state", async ({
   // state — never a blank tab. Structure-only; rows drift with real replies.
   await expect(
     page
-      .getByText(/interested lead/i)
+      .getByText(/positive (reply|replies)/i)
       .first()
-      .or(page.getByText(/No Interested Leads Yet/i).first())
+      .or(page.getByText(/No Positive Replies Yet/i).first())
   ).toBeVisible()
 })
 

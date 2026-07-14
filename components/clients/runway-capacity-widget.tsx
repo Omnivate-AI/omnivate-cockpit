@@ -34,7 +34,10 @@ export function RunwayCapacityWidget({ snapshot, config }: RunwayCapacityWidgetP
 
   const campaignRunwayColors = runwayColor(campaignRunway, warningDays, criticalDays)
 
-  // Capacity: emails sent yesterday vs estimated max
+  // Capacity: sends on the latest business day vs what current Smartlead
+  // per-box caps allow (migration 017: capacity views read the synced
+  // daily_send_limit — active caps + resting follow-up allowance; bench
+  // boxes carry cap 0 until deployed)
   const maxCapacity = snapshot.estimated_max_capacity ?? 0
   const emailsSent = snapshot.emails_sent_count ?? 0
   const capacityPct = maxCapacity > 0 ? Math.round((emailsSent / maxCapacity) * 100) : 0
@@ -73,9 +76,9 @@ export function RunwayCapacityWidget({ snapshot, config }: RunwayCapacityWidgetP
         {/* Capacity Gauge */}
         <div>
           <div className="mb-1 flex items-center justify-between">
-            <span className="text-sm font-medium">Sending Capacity</span>
+            <span className="text-sm font-medium" title="Emails sent on the latest business day vs what current per-box Smartlead caps allow (active + resting allowance + deployed bench)">Sending Capacity</span>
             <span className="text-sm tabular-nums text-muted-foreground">
-              {emailsSent.toLocaleString()} / {maxCapacity.toLocaleString()}
+              {emailsSent.toLocaleString()} / {maxCapacity.toLocaleString()} allowed/day
             </span>
           </div>
           <ProgressBar

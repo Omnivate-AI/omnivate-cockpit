@@ -149,21 +149,26 @@ export function AuditTable({ actions }: { actions: AuditLogRow[] }) {
                   </TableCell>
                   <TableCell>
                     {/* /domains/[id] is a DEF-4 redirect-to-home — link to the
-                        client's mailboxes tab where domains actually live */}
-                    <Link
-                      href={
-                        action.client
-                          ? `/clients/${action.client}?tab=mailboxes`
-                          : "/audit"
-                      }
-                      className="font-medium text-foreground hover:text-indigo-600 transition-colors"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {action.domain_name}
-                    </Link>
+                        client's mailboxes tab where domains actually live.
+                        Engine-level rows (daily_routine, weekly_rotation,
+                        order_engine) have no client/domain — plain em-dash,
+                        never an empty self-link (audit item 15c). */}
+                    {action.client ? (
+                      <Link
+                        href={`/clients/${action.client}?tab=mailboxes`}
+                        className="font-medium text-foreground hover:text-indigo-600 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {action.domain_name ?? "—"}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {action.domain_name ?? "—"}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="capitalize text-sm">
-                    {action.client}
+                    {action.client ?? <span className="text-muted-foreground">system</span>}
                   </TableCell>
                   <TableCell className="text-sm">
                     {formatActionType(action.action_type)}

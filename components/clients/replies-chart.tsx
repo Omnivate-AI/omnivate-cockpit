@@ -104,7 +104,7 @@ export function RepliesChart({ data, totalInterested }: RepliesChartProps) {
             <Bar
               yAxisId="left"
               dataKey="positiveReplies"
-              name="Interested"
+              name="Positive"
               fill={POSITIVE_FILL}
               radius={[3, 3, 0, 0]}
               stackId="replies"

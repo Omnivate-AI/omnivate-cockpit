@@ -51,8 +51,22 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
 
   const replyRateColors = replyRateColor(kpis.overallReplyRate)
   const rangeLabel = RANGE_LABELS[rangeKey] ?? `${days}d`
-  const emailsSentLabel = days === 1 ? "Emails Sent Yesterday" : `Emails Sent (${rangeLabel})`
-  const replyRateLabel = days === 1 ? "Reply Rate Yesterday" : `Reply Rate (${rangeLabel})`
+  // days=1 = the latest BUSINESS day with facts (RC-3: facts are weekday-only,
+  // so "Yesterday" on a Sun/Mon used to read all zeros) — label it with the
+  // actual date so Monday honestly says "Fri, Jul 10" instead of claiming
+  // yesterday.
+  const anchorLabel = kpis.latestSnapshotDate
+    ? new Date(`${kpis.latestSnapshotDate}T00:00:00Z`).toLocaleDateString("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+      })
+    : "Yesterday"
+  const emailsSentLabel =
+    days === 1 ? `Emails Sent (${anchorLabel})` : `Emails Sent (${rangeLabel})`
+  const replyRateLabel =
+    days === 1 ? `Reply Rate (${anchorLabel})` : `Reply Rate (${rangeLabel})`
 
   return (
     <div className="space-y-8">
@@ -89,9 +103,10 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
           icon={Mail}
         />
         <MetricCard
-          title="Interested Replies"
+          title="Positive Replies"
           value={kpis.positiveReplies.toLocaleString()}
           icon={MessageSquare}
+          subtitle="Interested + human-action-required"
         />
         <MetricCard
           title="Total Replies"

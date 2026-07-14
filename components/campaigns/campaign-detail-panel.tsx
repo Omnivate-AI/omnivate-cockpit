@@ -229,7 +229,7 @@ export function CampaignDetailPanel({
         {/* 14-day reply rate sparkline */}
         <div>
           <h4 className="mb-2 text-xs font-medium text-muted-foreground">
-            Reply Rate % (14d)
+            Positive Reply Rate % (14d)
           </h4>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={80}>
@@ -238,7 +238,7 @@ export function CampaignDetailPanel({
                 <YAxis hide />
                 <Tooltip
                   contentStyle={{ fontSize: 12 }}
-                  formatter={(value: number) => [`${value.toFixed(1)}%`, "Reply Rate"]}
+                  formatter={(value: number) => [`${value.toFixed(1)}%`, "Positive reply rate"]}
                 />
                 <Line
                   dataKey="replyRate"

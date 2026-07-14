@@ -139,7 +139,7 @@ export function PerformanceMetrics({ history }: PerformanceMetricsProps) {
       {/* Metric Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          title="Interested"
+          title="Positive Replies"
           value={metrics.interested.value.toLocaleString()}
           icon={ThumbsUp}
           valueColor="text-emerald-600"
@@ -158,7 +158,7 @@ export function PerformanceMetrics({ history }: PerformanceMetricsProps) {
           trend={metrics.sent.trend}
         />
         <MetricCard
-          title="Reply Rate"
+          title="Positive Reply Rate"
           value={metrics.replyRate.value > 0 ? `${metrics.replyRate.value.toFixed(2)}%` : "0%"}
           icon={Percent}
           trend={metrics.replyRate.trend}

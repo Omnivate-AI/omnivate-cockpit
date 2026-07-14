@@ -36,11 +36,17 @@ export function PlacementTrendChart({ results }: PlacementTrendChartProps) {
       return { chartData: [], campaignNames: [], hasEnoughData: false, yMin: 0 }
     }
 
-    // Filter to last 30 days
+    // Filter to last 30 days. Also drop empty result rows (null inbox_pct /
+    // zero seeds — an errored or seedless test run exists in the data, e.g.
+    // Cylindo Design Studios 2026-07-02): the old `inbox_pct ?? 0` plotted
+    // them as a fake dip to 0%.
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - 30)
     const filtered = results.filter(
-      (r) => new Date(r.test_date) >= cutoff
+      (r) =>
+        new Date(r.test_date) >= cutoff &&
+        r.inbox_pct != null &&
+        (r.total_seeds ?? 0) > 0
     )
 
     if (filtered.length < 2) {

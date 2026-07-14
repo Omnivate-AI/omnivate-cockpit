@@ -59,26 +59,43 @@ interface ClientSummaryCardProps {
   latest: ClientSnapshot | null
   alertCount: number
   periodDays?: number
+  /** Σ getTargetForDate over the range's FACT DATES (weekday JSON respected)
+      — computed in getClientSummaries. The old `daily target × calendar days`
+      compared 5 business days of sends against 7 days of target (RC-5). */
+  periodTarget?: number
+  /** Total replies in the range — same semantic as the Command Center
+      reply-rate KPI (RC-4). */
+  periodReplies?: number
   /** Infra roll-up from vw_cockpit_portfolio_health (PORT-2). */
   infra?: ClientInfraBadge
 }
 
-export function ClientSummaryCard({ config, latest, alertCount, periodDays = 1, infra }: ClientSummaryCardProps) {
+export function ClientSummaryCard({
+  config,
+  latest,
+  alertCount,
+  periodDays = 1,
+  periodTarget: periodTargetProp,
+  periodReplies = 0,
+  infra,
+}: ClientSummaryCardProps) {
   const status = computeHealthStatus(config, latest, alertCount)
   const statusCfg = STATUS_CONFIG[status]
 
-  // Send progress: percentage of period target hit (scale daily target by days)
-  const periodTarget = config.daily_email_target * periodDays
+  // Send progress vs the fact-date-scoped target (fallback: legacy calendar
+  // scaling for callers that don't pass periodTarget yet)
+  const periodTarget =
+    periodTargetProp ?? config.daily_email_target * periodDays
   const sendPct =
     latest && periodTarget > 0
       ? (latest.emails_sent_count / periodTarget) * 100
       : 0
 
-  // Reply rate
-  const replyRate =
-    latest && latest.all_time_emails_sent > 0
-      ? (latest.all_time_interested / latest.all_time_emails_sent) * 100
-      : 0
+  // Reply rate for the SELECTED RANGE: total replies ÷ sends — the same
+  // question the Command Center KPI answers. (Was all-time interested ÷
+  // all-time sent, which reads ~0.1% and rendered permanently red — RC-4.)
+  const periodSends = latest?.emails_sent_count ?? 0
+  const replyRate = periodSends > 0 ? (periodReplies / periodSends) * 100 : 0
   const replyColors = replyRateColor(replyRate)
 
   // Runway values (keep for health status computation)
@@ -197,10 +214,13 @@ export function ClientSummaryCard({ config, latest, alertCount, periodDays = 1, 
             </div>
           )}
 
-          {/* Bottom row: reply rate + alerts */}
+          {/* Bottom row: range-scoped reply rate + alerts */}
           <div className="flex items-center justify-between text-xs">
-            <span className={cn("tabular-nums font-medium", replyColors.text)}>
-              {replyRate > 0 ? `${replyRate.toFixed(1)}% reply` : "N/A"}
+            <span
+              className={cn("tabular-nums font-medium", replyColors.text)}
+              title={`Total replies ÷ emails sent in the selected range (${periodReplies.toLocaleString()} / ${periodSends.toLocaleString()})`}
+            >
+              {periodSends > 0 ? `${replyRate.toFixed(1)}% reply` : "N/A"}
             </span>
             {alertCount > 0 && (
               <span className="inline-flex items-center gap-1 text-rose-600 font-medium">

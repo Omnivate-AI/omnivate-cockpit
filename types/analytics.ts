@@ -82,6 +82,13 @@ export interface ClientSnapshot {
   // Lifetime efficiency metrics (summed across primary campaigns)
   all_time_emails_sent: number
   all_time_interested: number
+  /** All-time total replies (lifetime view) — the header's reply-rate
+      numerator (total replies, NOT interested — RC-4). */
+  all_time_replies?: number
+  /** Boxes currently in lifecycle 'active' (sending this week) — shown
+      beside the non-retired total so "200 mailboxes" can't read as
+      "200 sending" (audit item 2c). */
+  active_mailboxes?: number
 }
 
 export interface DailyPoint {

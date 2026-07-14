@@ -129,7 +129,7 @@ export function SendReplyChart({ data, dailyTarget }: SendReplyChartProps) {
                     </p>
                   )}
                   <p className="text-sm font-medium tabular-nums text-emerald-600">
-                    Reply Rate: {rate.toFixed(1)}%
+                    Positive reply rate: {rate.toFixed(1)}%
                   </p>
                 </div>
               )

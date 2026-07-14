@@ -14,9 +14,13 @@ function fmtDate(d: string | null): string {
   return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
 }
 
-// The Smartlead conversation deep-link the trackers use ("Smartlead URL").
-function smartleadUrl(leadId: string | null): string | null {
-  return leadId ? `https://app.smartlead.ai/app/master-inbox?leadMap=${leadId}` : null
+// The Smartlead conversation deep-link. ?leadMap= filters on the CAMPAIGN↔LEAD
+// ASSOCIATION id (campaign_lead_map_id) — NOT the lead id; lead-id links were
+// 26/26 dead in the V2 audit (RC-9). No map id captured yet → no link.
+function smartleadUrl(campaignLeadMapId: string | null): string | null {
+  return campaignLeadMapId
+    ? `https://app.smartlead.ai/app/master-inbox?leadMap=${campaignLeadMapId}`
+    : null
 }
 
 export async function InterestedLeadsTab({ clientSlug }: InterestedLeadsTabProps) {
@@ -26,8 +30,8 @@ export async function InterestedLeadsTab({ clientSlug }: InterestedLeadsTabProps
     return (
       <EmptyState
         icon={Inbox}
-        title="No Interested Leads Yet"
-        description="Positive email replies will appear here automatically as the performance plugin categorises them."
+        title="No Positive Replies Yet"
+        description="Leads whose current Smartlead category is Interested or Human-action-required will appear here automatically."
       />
     )
   }
@@ -36,11 +40,17 @@ export async function InterestedLeadsTab({ clientSlug }: InterestedLeadsTabProps
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
-            {leads.length} interested {leads.length === 1 ? "lead" : "leads"}
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
+            title="Current Smartlead category = Interested OR Human action required (the confirmed 'Positive replies' definition)"
+          >
+            {leads.length} positive {leads.length === 1 ? "reply" : "replies"}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            = Interested + human-action-required (current Smartlead category)
           </span>
         </div>
-        <SectionFreshness mode="db" prefix="Interested replies" />
+        <SectionFreshness mode="db" prefix="Positive replies" />
       </div>
 
       <div className="rounded-md border overflow-x-auto">
@@ -57,12 +67,22 @@ export async function InterestedLeadsTab({ clientSlug }: InterestedLeadsTabProps
           </thead>
           <tbody>
             {leads.map((l, i) => {
-              const slUrl = smartleadUrl(l.smartlead_lead_id)
+              const slUrl = smartleadUrl(l.campaign_lead_map_id)
               return (
                 <tr key={`${l.replier_email}-${i}`} className="border-b last:border-0 align-top">
                   {/* Lead: name + title, falling back to the reply email */}
                   <td className="px-4 py-3">
-                    <div className="font-medium">{l.full_name ?? l.replier_email}</div>
+                    <div className="font-medium">
+                      {l.full_name ?? l.replier_email}
+                      {l.lead_category_name === "human_action_required" && (
+                        <span
+                          className="ml-1.5 inline-flex rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
+                          title="Current Smartlead category: Human action required"
+                        >
+                          action needed
+                        </span>
+                      )}
+                    </div>
                     {l.title && <div className="text-xs text-muted-foreground">{l.title}</div>}
                     {l.linkedin_url && (
                       <a
