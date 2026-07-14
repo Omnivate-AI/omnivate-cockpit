@@ -25,6 +25,11 @@ interface OverviewTabProps {
   latestSnapshot: ClientSnapshot | null
   config: ClientConfig
   alertCount: number
+  /** Custom date range (?from/?to, already format-validated by the page) —
+      drives the performance-metrics KPIs (Phase 4); the chart suite follows
+      in Phase 5's rebuild. */
+  customFrom?: string
+  customTo?: string
 }
 
 export async function OverviewTab({
@@ -32,14 +37,25 @@ export async function OverviewTab({
   latestSnapshot,
   config,
   alertCount,
+  customFrom,
+  customTo,
 }: OverviewTabProps) {
+  // A custom range may reach further back than the default 60-day history
+  // window — widen the fetch to cover it (capped at a year).
+  let historyDays = 60
+  if (customFrom) {
+    const from = new Date(`${customFrom}T00:00:00Z`)
+    const days = Math.ceil((Date.now() - from.getTime()) / 86_400_000) + 1
+    historyDays = Math.min(365, Math.max(60, days))
+  }
+
   const [history, sendReplyHistory, topAlerts, totalReplies, replyData, performanceHistory, providerSplit, recipientSplit, readyBank] = await Promise.all([
     getClientRecentHistory(clientSlug, 7),
     getClientSendReplyHistory(clientSlug, 14),
     getClientAlerts(clientSlug, false, 3),
     getClientTotalReplies(clientSlug),
     getClientReplyHistory(clientSlug, 30),
-    getClientPerformanceHistory(clientSlug, 60),
+    getClientPerformanceHistory(clientSlug, historyDays),
     getClientProviderSplit(clientSlug, 14),
     getClientRecipientSplit(clientSlug, 14),
     getClientReadyBank(clientSlug),
@@ -67,7 +83,10 @@ export async function OverviewTab({
   return (
     <div className="space-y-6">
       {/* Performance Metrics with Time Range Toggles */}
-      <PerformanceMetrics history={performanceHistory} />
+      <PerformanceMetrics
+        history={performanceHistory}
+        customRange={customFrom ? { from: customFrom, to: customTo } : undefined}
+      />
 
       {/* KPI Cards */}
       <div className="flex justify-end mb-1">

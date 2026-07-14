@@ -1,76 +1,85 @@
 "use client"
 
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
-import { ReactNode, useCallback } from "react"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { ReactNode, useCallback, useEffect, useState, useTransition } from "react"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TabSkeleton } from "./tab-skeletons"
+import { TAB_CONFIG, type TabValue } from "./tab-config"
 
-const TAB_CONFIG = [
-  { value: "overview", label: "Overview" },
-  { value: "interested", label: "Positive Replies" },
-  { value: "campaigns", label: "Campaigns" },
-  { value: "pipelines", label: "Pipelines" },
-  { value: "mailboxes", label: "Mailboxes" },
-  { value: "placement", label: "Placement" },
-  { value: "alerts", label: "Alerts" },
-  { value: "settings", label: "Settings" },
-] as const
-
-export type TabValue = (typeof TAB_CONFIG)[number]["value"]
+// Type-only re-export for existing importers. The VALUES (TAB_CONFIG,
+// isTabValue) live in tab-config.ts — a plain module — and must be imported
+// from there: importing a function through this "use client" module hands
+// the server a client reference, which throws at runtime (build stays green).
+export type { TabValue } from "./tab-config"
 
 export interface ClientTabsProps {
-  overview?: ReactNode
-  interested?: ReactNode
-  campaigns?: ReactNode
-  pipelines?: ReactNode
-  mailboxes?: ReactNode
-  placement?: ReactNode
-  alerts?: ReactNode
-  settings?: ReactNode
+  /** The tab the SERVER rendered (from searchParams) — children is its content. */
+  activeTab: TabValue
+  /** The active tab's server-rendered content (page renders ONLY this tab). */
+  children: ReactNode
 }
 
-export function ClientTabs({
-  overview,
-  interested,
-  campaigns,
-  pipelines,
-  mailboxes,
-  placement,
-  alerts,
-  settings,
-}: ClientTabsProps) {
+/**
+ * V2 Phase 4 — pure tab NAVIGATION. The page renders only the active tab's
+ * server component (behind Suspense), so switching tabs no longer re-runs the
+ * other seven tabs' queries. Feedback is instant and client-side:
+ *
+ *   click → pressed state flips + the target tab's skeleton renders (same
+ *   frame) → router.replace kicks off the server render in a transition →
+ *   the streamed content (or the page-level Suspense fallback — the SAME
+ *   skeleton component) replaces it when it lands.
+ *
+ * Pre-Phase-4 both the pressed state and the content were derived from the
+ * URL, so NOTHING moved until the full server round-trip finished — measured
+ * at 2.7–4.4s on production tab clicks.
+ */
+export function ClientTabs({ activeTab, children }: ClientTabsProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
+  const [, startTransition] = useTransition()
 
-  const activeTab = (searchParams.get("tab") as TabValue) || "overview"
+  // TWO optimistic states with different priorities (the <100ms trick):
+  // pressedTab commits URGENTLY — its commit only re-renders the trigger
+  // row, so the click paints in the next frame. skeletonTab commits inside
+  // the transition — swapping a chart-heavy tab body for the skeleton
+  // (recharts unmounts) costs 100-300ms, and doing it in the SAME commit as
+  // the pressed flip held the paint hostage (measured 164-405ms).
+  const [pressedTab, setPressedTab] = useState<TabValue | null>(null)
+  const [skeletonTab, setSkeletonTab] = useState<TabValue | null>(null)
+
+  // Server caught up → hand back to URL-derived state
+  useEffect(() => {
+    if (pressedTab !== null && pressedTab === activeTab) setPressedTab(null)
+    if (skeletonTab !== null && skeletonTab === activeTab) setSkeletonTab(null)
+  }, [pressedTab, skeletonTab, activeTab])
+
+  const displayTab = pressedTab ?? activeTab
+  const isSwitching = skeletonTab !== null && skeletonTab !== activeTab
 
   const handleTabChange = useCallback(
     (value: string) => {
+      const tab = value as TabValue
+      setPressedTab(tab) // urgent: pressed state paints this frame
       const params = new URLSearchParams(searchParams.toString())
-      if (value === "overview") {
+      if (tab === "overview") {
         params.delete("tab")
       } else {
-        params.set("tab", value)
+        params.set("tab", tab)
       }
       const query = params.toString()
-      router.replace(query ? `${pathname}?${query}` : pathname)
+      startTransition(() => {
+        setSkeletonTab(tab) // deferred: heavy body→skeleton swap
+        router.replace(query ? `${pathname}?${query}` : pathname, {
+          scroll: false,
+        })
+      })
     },
     [searchParams, router, pathname]
   )
 
-  const tabContent: Record<TabValue, ReactNode> = {
-    overview: overview ?? <p className="text-sm text-muted-foreground py-8">Overview tab content coming soon</p>,
-    interested: interested ?? <p className="text-sm text-muted-foreground py-8">Interested leads content coming soon</p>,
-    campaigns: campaigns ?? <p className="text-sm text-muted-foreground py-8">Campaigns tab content coming soon</p>,
-    pipelines: pipelines ?? <p className="text-sm text-muted-foreground py-8">Pipelines tab content coming soon</p>,
-    mailboxes: mailboxes ?? <p className="text-sm text-muted-foreground py-8">Mailboxes tab content coming soon</p>,
-    placement: placement ?? <p className="text-sm text-muted-foreground py-8">Placement tab content coming soon</p>,
-    alerts: alerts ?? <p className="text-sm text-muted-foreground py-8">Alerts tab content coming soon</p>,
-    settings: settings ?? <p className="text-sm text-muted-foreground py-8">Settings tab content coming soon</p>,
-  }
-
   return (
-    <Tabs value={activeTab} onValueChange={handleTabChange}>
+    <Tabs value={displayTab} onValueChange={handleTabChange}>
       {/* Scrollable on narrow viewports so every tab stays reachable (NFR-4) */}
       <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
         <TabsList className="w-max">
@@ -81,11 +90,11 @@ export function ClientTabs({
           ))}
         </TabsList>
       </div>
-      {TAB_CONFIG.map((tab) => (
-        <TabsContent key={tab.value} value={tab.value} className="tab-fade-in">
-          {tabContent[tab.value]}
-        </TabsContent>
-      ))}
+      {/* Keyed on CONTENT identity (skeletonTab), not the pressed tab — the
+          urgent pressed-flip commit must not remount this subtree. */}
+      <div role="tabpanel" className="mt-2 tab-fade-in" key={skeletonTab ?? activeTab}>
+        {isSwitching ? <TabSkeleton tab={skeletonTab ?? activeTab} /> : children}
+      </div>
     </Tabs>
   )
 }

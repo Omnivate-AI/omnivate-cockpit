@@ -1,6 +1,9 @@
+import { Suspense } from "react"
 import { notFound } from "next/navigation"
 import { ClientHeader } from "@/components/clients/client-header"
 import { ClientTabs } from "@/components/clients/client-tabs"
+import { isTabValue, type TabValue } from "@/components/clients/tab-config"
+import { TabSkeleton } from "@/components/clients/tab-skeletons"
 import { OverviewTab } from "@/components/clients/tabs/overview-tab"
 import { InterestedLeadsTab } from "@/components/clients/tabs/interested-leads-tab"
 import { CampaignsTab } from "@/components/clients/tabs/campaigns-tab"
@@ -10,17 +13,28 @@ import { PipelinesTab } from "@/components/clients/tabs/pipelines-tab"
 import { SettingsTab } from "@/components/clients/tabs/settings-tab"
 import { PlacementTab } from "@/components/clients/tabs/placement-tab"
 import { getSpClient, resolveClientSlugs } from "@/lib/queries"
-import { getClientPlacementResults } from "@/lib/queries/campaigns"
 import { getClientSnapshot } from "@/lib/queries/analytics"
 import { createServerClient } from "@/lib/supabase/server"
 import type { ClientConfig } from "@/types/analytics"
 
 interface ClientPageProps {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ tab?: string; from?: string; to?: string }>
 }
 
-export default async function ClientPage({ params }: ClientPageProps) {
-  const { slug } = await params
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+export default async function ClientPage({ params, searchParams }: ClientPageProps) {
+  const [{ slug }, sp] = await Promise.all([params, searchParams])
+
+  // V2 Phase 4: the page renders ONLY the active tab's server component.
+  // Before, all eight tabs rendered (and queried) on every request — the
+  // Mailboxes tab alone fires eleven queries — so every tab click re-ran
+  // ~30 queries nobody asked for (measured 2.7–4.4s to first feedback).
+  const activeTab: TabValue = isTabValue(sp.tab) ? sp.tab : "overview"
+  // Custom date range (Phase 4) — validated here, consumed by Overview
+  const from = sp.from && DATE_RE.test(sp.from) ? sp.from : undefined
+  const to = sp.to && DATE_RE.test(sp.to) ? sp.to : undefined
 
   // Validate slug against sp_clients (the plugins' client registry)
   const spClient = await getSpClient(slug)
@@ -34,8 +48,8 @@ export default async function ClientPage({ params }: ClientPageProps) {
   // Resolve child slugs for parent-client aggregation (e.g., roosterpunk → [roosterpunk_us, roosterpunk_uk])
   const childSlugs = await resolveClientSlugs(client)
 
-  // Fetch shared data in parallel — all from the sp_* read-models
-  const [latestSnapshot, alertCountRes, configsRes, placementResults] = await Promise.all([
+  // Shared data only (header + config) — per-tab data lives in each tab
+  const [latestSnapshot, alertCountRes, configsRes] = await Promise.all([
     getClientSnapshot(client),
     supabase
       .from("vw_cockpit_alerts")
@@ -46,7 +60,6 @@ export default async function ClientPage({ params }: ClientPageProps) {
       .from("client_analytics_config")
       .select("*")
       .in("client", childSlugs),
-    getClientPlacementResults(client),
   ])
 
   const alertCount = alertCountRes.count ?? 0
@@ -90,6 +103,55 @@ export default async function ClientPage({ params }: ClientPageProps) {
   }
   const displayName = config?.display_name ?? spClient.display_name ?? slug
 
+  const noConfig = (
+    <p className="text-sm text-muted-foreground py-8">
+      No analytics configuration found for this client.
+    </p>
+  )
+
+  // Only the active tab's component is instantiated — inactive tabs run
+  // ZERO queries. The Suspense fallback is the same skeleton ClientTabs
+  // shows optimistically, so click → content is one continuous surface.
+  function renderActiveTab(tab: TabValue) {
+    switch (tab) {
+      case "overview":
+        return config ? (
+          <OverviewTab
+            clientSlug={client}
+            latestSnapshot={latestSnapshot}
+            config={config}
+            alertCount={alertCount}
+            customFrom={from}
+            customTo={to}
+          />
+        ) : (
+          noConfig
+        )
+      case "interested":
+        return <InterestedLeadsTab clientSlug={client} />
+      case "campaigns":
+        return <CampaignsTab clientSlug={client} />
+      case "pipelines":
+        return <PipelinesTab clientSlug={client} />
+      case "mailboxes":
+        return <MailboxesTab clientSlug={client} />
+      case "placement":
+        return <PlacementTab clientSlug={client} />
+      case "alerts":
+        return <AlertsTab clientSlug={client} />
+      case "settings":
+        return config ? (
+          <SettingsTab
+            clientSlug={client}
+            config={config}
+            estimatedCapacity={latestSnapshot?.estimated_max_capacity ?? 0}
+          />
+        ) : (
+          noConfig
+        )
+    }
+  }
+
   return (
     <div className="space-y-6">
       <ClientHeader
@@ -98,41 +160,14 @@ export default async function ClientPage({ params }: ClientPageProps) {
         latestSnapshot={latestSnapshot}
         alertCount={alertCount}
       />
-      <ClientTabs
-        overview={
-          config ? (
-            <OverviewTab
-              clientSlug={client}
-              latestSnapshot={latestSnapshot}
-              config={config}
-              alertCount={alertCount}
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground py-8">
-              No analytics configuration found for this client.
-            </p>
-          )
-        }
-        interested={<InterestedLeadsTab clientSlug={client} />}
-        campaigns={<CampaignsTab clientSlug={client} />}
-        pipelines={<PipelinesTab clientSlug={client} />}
-        mailboxes={<MailboxesTab clientSlug={client} />}
-        placement={<PlacementTab results={placementResults} />}
-        alerts={<AlertsTab clientSlug={client} />}
-        settings={
-          config ? (
-            <SettingsTab
-              clientSlug={client}
-              config={config}
-              estimatedCapacity={latestSnapshot?.estimated_max_capacity ?? 0}
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground py-8">
-              No analytics configuration found for this client.
-            </p>
-          )
-        }
-      />
+      <ClientTabs activeTab={activeTab}>
+        <Suspense
+          key={`${activeTab}:${from ?? ""}:${to ?? ""}`}
+          fallback={<TabSkeleton tab={activeTab} />}
+        >
+          {renderActiveTab(activeTab)}
+        </Suspense>
+      </ClientTabs>
     </div>
   )
 }

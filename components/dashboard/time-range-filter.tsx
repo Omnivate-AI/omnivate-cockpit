@@ -1,39 +1,31 @@
 "use client"
 
-import { useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { RANGE_OPTIONS, DEFAULT_RANGE } from "@/lib/range-utils"
-import type { RangeValue } from "@/lib/range-utils"
+import { RANGE_OPTIONS } from "@/lib/range-utils"
+import { useRangeTransition } from "./range-transition"
 
 // Re-export for backward compatibility
 export { parseRangeDays, DEFAULT_RANGE } from "@/lib/range-utils"
 export type { RangeValue } from "@/lib/range-utils"
 
+/**
+ * Command Center range switch. Pressed state + pending veil come from
+ * RangeTransitionProvider (V2 Phase 4) — the click responds the same frame
+ * instead of after the server round-trip (measured 1.5-1.8s before).
+ */
 export function TimeRangeFilter() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const current = searchParams.get("range") ?? DEFAULT_RANGE
-
-  function handleChange(value: RangeValue) {
-    const params = new URLSearchParams(searchParams.toString())
-    if (value === DEFAULT_RANGE) {
-      params.delete("range")
-    } else {
-      params.set("range", value)
-    }
-    const qs = params.toString()
-    router.push(qs ? `/?${qs}` : "/", { scroll: false })
-  }
+  const { displayRange, navigate } = useRangeTransition()
 
   return (
     <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/50 p-1">
       {RANGE_OPTIONS.map((r) => (
         <button
           key={r.value}
-          onClick={() => handleChange(r.value)}
+          onClick={() => navigate(r.value)}
+          aria-pressed={displayRange === r.value}
           className={cn(
             "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-            current === r.value
+            displayRange === r.value
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           )}
