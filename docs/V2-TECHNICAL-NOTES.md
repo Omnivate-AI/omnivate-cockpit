@@ -76,6 +76,21 @@ Per Amzat: the V2 data-accuracy validation is done fresh in Phase 2 — treat pr
 
 _(sessions append findings here — newest first)_
 
+### 2026-07-14 — Phase 2 done (numbers audit, read-only)
+
+Full checklist executed against Supabase AND live Smartlead (7/14/30d windows, AP + Cylindo; 60 campaigns swept, ~700 live API calls, zero writes). Deliverable: **`docs/V2-AUDIT-FINDINGS.md`** — verdict matrix (14 ✅ · 12 🟡 · 8 🔴), root causes RC-1…RC-10, and the exact Phase 3 fix/backfill list. Headlines:
+
+- **Sends are exact everywhere** (Cylindo 7/14/30d deltas 0/0/0 vs live Smartlead; AP deltas are entirely weekend sends). Lifetime stats, runway math, placement values (per-seed recompute matched to the row), mailbox reply rates, orders spend semantics: all verified good.
+- **Replies undercount 5–7%, positives 24–31% (14/30d)** — the sync writes each day once and never revisits; late replies/categorizations are permanently lost (RC-1). Weekend dates are skipped by design but AP really sent 67 emails on 07-11/12 (RC-2).
+- **Command Center shows all zeros every Sun+Mon** — calendar cutoff `≥ today−1` over business-day-only facts (RC-3).
+- **All 26 tested conversation links are dead** — URL passes `smartlead_lead_id` where `?leadMap=` needs `campaign_lead_map_id` (different namespace). Tyler Lopez: stored id is his real *lead* id (resolves empty); his true map id 3244548229 opens his exact conversation. Fix = store map id in category capture + backfill (RC-9).
+- **Rotation swap (07-13) left `sp_mailboxes.max_email_per_day` stale/inverted** — active boxes show 5/day (real: 25), resting 30 (real: 5); every capacity view + Daily Limit column reads the stale column while the correctly-synced `daily_send_limit` sits unused (RC-6).
+- **Three "reply rate"/"interested" semantics across surfaces** (header/digest = all-time interested rate — the formula Omar rejected — still live outside the Command Center); Interested tab undercounts Cylindo ~60% (webhook-era only). Smartlead's own lifetime `interested` ≈ Interested + human_action_required — supports decision #1; canonical per-lead source recommendation: `sp_campaign_leads` current category (RC-4, RC-10).
+- **OrbitalX**: active in `sp_clients` but missing from the sync's `CLIENT_MATCHERS` → zero facts ever, blank card; needs an Omar decision — track it or deactivate it (RC-8).
+- Digest vs CC quantified for the Phase 9 merge: digest header rate 0.11% (all-time) vs CC 1.45% (7d); digest "Total Replies" 2,835 (lifetime) beside "Sent" 5,510 (latest day) (RC-7).
+
+Method notes for future audits: MCP supabase token was dead again — Management API workaround from this file's DB-access row worked throughout. Smartlead ground truth = the same endpoints the sync uses (`sequence-analytics` day/window, `/analytics` lifetime); `GET /master-inbox/{leadMap}` is the link-resolution oracle; `/campaigns/{id}/leads?lead_category_id=` returns `campaign_lead_map_id` (the `?email=` filter 400s). Sweep/window scripts preserved in the session scratchpad (`sl.mjs`, `sl-windows.mjs`) — Phase 3's backfill can reuse the trailing re-pull pattern.
+
 ### 2026-07-13 — Phase 1 shipped (declutter, branding, dead-button removal)
 
 **Omar approved the requirements doc this morning** (ClickUp comment 90120240102615) with one addition — client-level graph overhaul — folded into Phase 5 (see Decisions record above).
