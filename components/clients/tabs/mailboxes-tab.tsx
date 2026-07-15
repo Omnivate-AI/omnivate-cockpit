@@ -1,6 +1,6 @@
 import {
   getClientMailboxInventory,
-  getClientDomainHealthTrend,
+  getClientDomainHealthBands,
   getClientCapacitySnapshot,
   getClientMasterInbox,
   getClientRotationCapacity,
@@ -31,9 +31,9 @@ interface MailboxesTabProps {
 }
 
 export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
-  const [mailboxes, healthTrend, capacity, masterInfo, blacklist, orders, lifecycleHistory, domains, rotation, decisions] = await Promise.all([
+  const [mailboxes, healthBands, capacity, masterInfo, blacklist, orders, lifecycleHistory, domains, rotation, decisions] = await Promise.all([
     getClientMailboxInventory(clientSlug),
-    getClientDomainHealthTrend(clientSlug, 30),
+    getClientDomainHealthBands(clientSlug, 30),
     getClientCapacitySnapshot(clientSlug),
     getClientMasterInbox(clientSlug),
     getClientBlacklist(clientSlug),
@@ -111,15 +111,15 @@ export async function MailboxesTab({ clientSlug }: MailboxesTabProps) {
 
       {/* Lifecycle breakdown + Master inbox */}
       <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
-        <LifecycleBreakdown data={capacity} />
+        <LifecycleBreakdown data={capacity} mailboxes={mailboxes} />
         <MasterInboxCard info={masterInfo} />
       </div>
 
-      {/* 30-day health trend */}
+      {/* 30-day domain health — worst domain + at-risk band (V2 Phase 7) */}
       <Card>
         <CardContent className="px-4 py-4">
-          <p className="text-sm font-medium mb-2">Domain Health Trend (30 days)</p>
-          <MailboxHealthChart data={healthTrend} />
+          <p className="text-sm font-medium mb-2">Domain Health — weakest domain &amp; at-risk (30 days)</p>
+          <MailboxHealthChart data={healthBands} />
         </CardContent>
       </Card>
 

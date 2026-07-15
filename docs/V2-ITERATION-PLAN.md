@@ -28,7 +28,7 @@ Everything you asked us to verify gets verified fresh as part of this plan — t
 | 4 | Make it feel alive (loading states, date range) | 1 session | ✅ Done (2026-07-14) — feedback 2.7–4.4s → instant; tab switches run only their own queries |
 | 5 | Charts & campaigns restructure + client-graph overhaul (Omar 07-13) | 1 session | ✅ Done (2026-07-14) — confirmed 3-chart suite live; change list in `docs/V2-PHASE5-CHART-CHANGES.md` for Omar's review |
 | 6 | Ready Bank truth, client by client | 1 session | ✅ Done (2026-07-14) — per-client reconciliation + migration 018 (emailed = live truth, qualified = not-tracked semantics); gap list in `docs/V2-PHASE6-READY-BANK-GAPS.md` |
-| 7 | Mailboxes & orders — make actions real | 1–2 sessions | ☐ Not started |
+| 7 | Mailboxes & orders — make actions real | 1–2 sessions | ✅ Done (2026-07-14) — retire on the decisions model + supervised retire-engine (staged-proven), order path un-stranded, worst/at-risk + weighted split charts, domain drill-down; `docs/V2-PHASE7-MAILBOX-ACTIONS.md` + email-infra PR #2 |
 | 8 | Alerts that behave like alerts | 1 session | ☐ Not started |
 | 9 | One home: merge Digest into Command Center + final QA + Loom | 1 session | ☐ Not started |
 

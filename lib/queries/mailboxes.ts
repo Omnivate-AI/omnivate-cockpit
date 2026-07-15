@@ -63,6 +63,7 @@ export interface ClientMailboxRow {
   smartlead_tags: string[]
   is_warmup_blocked: boolean
   health_checked_at: string | null
+  created_at: string | null
   spam_rate_pct: number | null
   reply_rate_pct: number | null
 }
@@ -201,7 +202,7 @@ export const getClientMailboxInventory = cache(
     const { data } = await supabase
       .from("vw_cockpit_accounts")
       .select(
-        "id, email, domain_name, domain_id, client, lifecycle_status, warmup_health_pct, platform, campaign_ids, max_email_per_day, is_master_inbox, smartlead_tags, is_warmup_blocked, health_checked_at"
+        "id, email, domain_name, domain_id, client, lifecycle_status, warmup_health_pct, platform, campaign_ids, max_email_per_day, is_master_inbox, smartlead_tags, is_warmup_blocked, health_checked_at, created_at"
       )
       .eq("client", client)
       .order("email", { ascending: true })
@@ -248,8 +249,49 @@ export interface DomainHealthPoint {
   avgHealth: number
 }
 
-export const getClientDomainHealthTrend = cache(
-  async (client: string, days: number = 30): Promise<DomainHealthPoint[]> => {
+/**
+ * V2 Phase 7 — the Domain Health chart is a WORST/AT-RISK band, not a pool
+ * average. A healthy pool sits at 99-100 for every domain, so an averaged
+ * line hugs the top forever AND — worse — a single burnt box vanishes into
+ * the mean (measured: Acceleration Partners shows avg 99.2 while one box
+ * sits at warmup 0.0; Cylindo avg 99.4 with a box at 71). This series
+ * surfaces the pool's WEAKEST link per day + how many domains are at risk,
+ * so the chart says something on both a healthy and an unhealthy pool.
+ */
+export interface DomainHealthBandPoint {
+  date: string
+  /** Lowest per-domain warmup that day — the weakest link. */
+  worst: number
+  /** 25th-percentile per-domain warmup — the "bottom of the pack" band. */
+  p25: number
+  /** Median per-domain warmup — the healthy baseline. */
+  median: number
+  /** Domains below the 97 burn threshold that day. */
+  atRisk: number
+  /** Domains reporting warmup that day. */
+  domains: number
+}
+
+export interface DomainHealthBands {
+  points: DomainHealthBandPoint[]
+  /** True when every day's weakest domain is at or above the burn line —
+      lets the chart show an explicit "all domains healthy" state (answer #6). */
+  allHealthy: boolean
+}
+
+function quantile(sorted: number[], q: number): number {
+  if (sorted.length === 0) return 0
+  if (sorted.length === 1) return sorted[0]
+  const pos = (sorted.length - 1) * q
+  const base = Math.floor(pos)
+  const rest = pos - base
+  return sorted[base + 1] !== undefined
+    ? sorted[base] + rest * (sorted[base + 1] - sorted[base])
+    : sorted[base]
+}
+
+export const getClientDomainHealthBands = cache(
+  async (client: string, days: number = 30): Promise<DomainHealthBands> => {
     const supabase = createServerClient()
 
     const since = new Date()
@@ -263,7 +305,8 @@ export const getClientDomainHealthTrend = cache(
       .gte("snapshot_date", sinceStr)
       .order("snapshot_date", { ascending: true })
 
-    if (!snapshots || snapshots.length === 0) return []
+    if (!snapshots || snapshots.length === 0)
+      return { points: [], allHealthy: true }
 
     const byDate = new Map<string, number[]>()
     for (const s of snapshots) {
@@ -273,15 +316,28 @@ export const getClientDomainHealthTrend = cache(
       byDate.get(date)!.push(Number(s.warmup_health_pct))
     }
 
-    const result: DomainHealthPoint[] = []
+    const points: DomainHealthBandPoint[] = []
+    let allHealthy = true
     for (const [date, values] of byDate) {
-      const avg = values.reduce((a, b) => a + b, 0) / values.length
-      result.push({ date, avgHealth: Math.round(avg * 100) / 100 })
+      const sorted = [...values].sort((a, b) => a - b)
+      const worst = sorted[0]
+      if (worst < BURN_THRESHOLD_HEALTH) allHealthy = false
+      points.push({
+        date,
+        worst: Math.round(worst * 10) / 10,
+        p25: Math.round(quantile(sorted, 0.25) * 10) / 10,
+        median: Math.round(quantile(sorted, 0.5) * 10) / 10,
+        atRisk: sorted.filter((v) => v < BURN_THRESHOLD_HEALTH).length,
+        domains: sorted.length,
+      })
     }
 
-    return result.sort((a, b) => a.date.localeCompare(b.date))
+    points.sort((a, b) => a.date.localeCompare(b.date))
+    return { points, allHealthy }
   }
 )
+
+const BURN_THRESHOLD_HEALTH = 97
 
 export const getClientMailboxSummary = cache(
   async (client: string): Promise<ClientMailboxSummary> => {
@@ -485,7 +541,10 @@ export const getClientCapacitySnapshot = cache(
           .from("sp_decisions")
           .select("id")
           .eq("client", client)
-          .eq("status", "proposed"),
+          // Both open states (V2 Phase 7): plugin engines raise 'proposed',
+          // the cockpit raises 'pending' (Request Order / Retire Domain).
+          // Counting only 'proposed' hid every cockpit-raised decision.
+          .in("status", ["proposed", "pending"]),
         supabase
           .from("vw_cockpit_accounts")
           .select(

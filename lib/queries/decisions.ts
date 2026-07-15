@@ -100,5 +100,12 @@ export function summarizeDecisionPayload(d: ClientDecision): string {
   if (d.decision_type === "lifecycle_correction") {
     return "lifecycle / tag drift correction"
   }
+  if (d.decision_type === "retire_domain") {
+    const dom = (p.domain_name as string | undefined) ?? "domain"
+    const n = (p.mailbox_count as number | undefined) ?? null
+    return n != null
+      ? `retire ${dom} · ${n} mailbox${n === 1 ? "" : "es"}`
+      : `retire ${dom}`
+  }
   return d.decision_type.replace(/_/g, " ")
 }

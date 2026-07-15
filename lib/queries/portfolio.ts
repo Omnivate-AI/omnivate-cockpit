@@ -134,11 +134,25 @@ export const getClientLifecycleHistory = cache(
         e.masters += r.masters
         e.blacklisted += r.blacklisted
         e.at_risk += r.at_risk
-        // Weighted-enough average for a trend line
-        e.avg_warmup =
-          e.avg_warmup !== null && r.avg_warmup !== null
-            ? Number(((Number(e.avg_warmup) + Number(r.avg_warmup)) / 2).toFixed(1))
-            : e.avg_warmup ?? r.avg_warmup
+        // Mailbox-count-WEIGHTED grand mean across child slugs (V2 Phase 7).
+        // vw_cockpit_lifecycle_daily.avg_warmup is already a true per-mailbox
+        // mean over that slug's `total` boxes, so Σ(avgᵢ·totalᵢ)/Σtotalᵢ
+        // reconstructs the exact grand mean. The old `(a+b)/2` was unweighted
+        // (a 20-box slug counted equally to a 2-box slug) and order-dependent
+        // for >2 children. `e.total` was already incremented above, so we
+        // recover the pre-merge weight from the incoming row + running total.
+        if (r.avg_warmup !== null) {
+          const wPrev = e.total - r.total // e.total already includes r.total
+          const prevSum =
+            e.avg_warmup !== null ? Number(e.avg_warmup) * wPrev : 0
+          const combinedW = wPrev + r.total
+          e.avg_warmup =
+            combinedW > 0
+              ? Number(
+                  ((prevSum + Number(r.avg_warmup) * r.total) / combinedW).toFixed(1)
+                )
+              : e.avg_warmup
+        }
       }
     }
 

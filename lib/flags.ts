@@ -41,6 +41,16 @@ export const FLAGS = {
    */
   infraOrderRequest: true,
   /**
+   * 5.2 (V2 Phase 7) — "Retire Domain" raises a pending retire_domain
+   * decision (domain-scoped) from the cockpit. Same safety envelope as
+   * infraOrderRequest: raising a proposal NEVER spends or destroys — a
+   * supervised email-infra retire-engine executes the drain + InboxKit
+   * cancel + catch-all + tag only AFTER the decision is approved. On by
+   * default because the button is now non-destructive (it only proposes);
+   * the destructive execution stays supervised + Omar-gated plugin-side.
+   */
+  infraRetireDomain: true,
+  /**
    * 5.1c — "Flag as burnt → queue swap": sets sp_mailboxes.lifecycle_status
    * = 'burnt' so the next SUPERVISED handle-burn run drains the box + swaps
    * in a reserve. This is the ONLY real "swap in reserves" trigger (swaps

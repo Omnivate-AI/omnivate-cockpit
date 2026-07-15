@@ -263,61 +263,40 @@ export function MailboxInventoryTable({ mailboxes, domainFilter, client }: Mailb
   }, [grouped])
 
   // Domains that completed retire (hidden from Action Required until refresh confirms from DB)
-  const [retiredDomains, setRetiredDomains] = useState<Set<string>>(new Set())
+  const [retiredDomains] = useState<Set<string>>(new Set())
 
-  async function pollTaskStatus(runId: string, domainName: string) {
-    const maxAttempts = 20 // ~60s at 3s intervals
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise((r) => setTimeout(r, 3000))
-      try {
-        const res = await fetch(`/api/tasks/status?runId=${runId}`)
-        const data = await res.json()
-        if (data.status === "COMPLETED") {
-          setRetiredDomains((prev) => new Set(prev).add(domainName))
-          setDrainingDomains((prev) => { const n = new Set(prev); n.delete(domainName); return n })
-          toast.success(`${domainName} retired`, {
-            description: "Sending stopped, InboxKit cancelled, catch-all set to master.",
-          })
-          router.refresh()
-          return
-        }
-        if (data.status === "FAILED" || data.status === "CANCELED") {
-          setDrainingDomains((prev) => { const n = new Set(prev); n.delete(domainName); return n })
-          toast.error(`Failed to retire ${domainName}`, {
-            description: "The domain is still active. Try again.",
-          })
-          return
-        }
-        // EXECUTING or QUEUED — keep polling
-      } catch {
-        // Network blip — keep trying
-      }
-    }
-    // Timed out
-    setDrainingDomains((prev) => { const n = new Set(prev); n.delete(domainName); return n })
-    toast.error(`Retire timed out for ${domainName}`, {
-      description: "Check the app in a minute — it may still be processing.",
-    })
-  }
-
-  async function handleDrain(domainName: string) {
+  // V2 Phase 7 — retiring a domain RAISES a decision (proposal → approve in
+  // the decisions panel → a supervised plugin engine executes the real
+  // drain + InboxKit cancel + catch-all + tag). It does NOT act immediately,
+  // and it does NOT hit the old /api/domains/drain endpoint (a disabled 410
+  // stub on the retired mailbox_* model). Raising a decision spends and
+  // destroys nothing — the destructive step is gated behind approval + a
+  // supervised run, exactly like Request Order.
+  async function handleDrain(domainName: string, count: number) {
     if (!client) return
     setDrainingDomains((prev) => new Set(prev).add(domainName))
-    toast(`Retiring ${domainName}...`, { description: "Cancelling mailboxes and setting catch-all." })
     try {
-      const res = await fetch("/api/domains/drain", {
+      const res = await fetch(`/api/clients/${client}/retire-domain`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ client, domain_name: domainName }),
+        body: JSON.stringify({ domain_name: domainName, mailbox_count: count }),
       })
       const data = await res.json()
+      setDrainingDomains((prev) => { const n = new Set(prev); n.delete(domainName); return n })
       if (!res.ok) {
-        setDrainingDomains((prev) => { const n = new Set(prev); n.delete(domainName); return n })
-        toast.error(data.error || "Failed to start retire")
+        toast.error(data.error || "Failed to raise retire proposal")
         return
       }
-      // Poll for completion in background
-      pollTaskStatus(data.runId, domainName)
+      if (data.deduped) {
+        toast(`Retire proposal already open for ${domainName}`, {
+          description: `Decision #${data.existingId} (${data.status}) is in the decisions panel.`,
+        })
+      } else {
+        toast.success(`Retire proposal raised for ${domainName}`, {
+          description: "Approve it in the infrastructure decisions panel; a supervised run then retires the domain.",
+        })
+      }
+      router.refresh()
     } catch {
       setDrainingDomains((prev) => { const n = new Set(prev); n.delete(domainName); return n })
       toast.error("Network error")
@@ -506,13 +485,13 @@ export function MailboxInventoryTable({ mailboxes, domainFilter, client }: Mailb
         <ConfirmDialog
           open={!!confirmDrainDomain}
           onOpenChange={(v) => !v && setConfirmDrainDomain(null)}
-          title={`Retire ${confirmDrainDomain.name}`}
-          description={`This will immediately: set sending to 0, cancel InboxKit subscriptions (stops future billing), set catch-all forwarding to master inbox, and update tags to retired. ${confirmDrainDomain.count} mailbox${confirmDrainDomain.count !== 1 ? "es" : ""} on ${confirmDrainDomain.name} (worst health: ${confirmDrainDomain.health}%). Mailboxes remain functional until their prepaid period expires. Available reserves will be deployed to replace them.`}
-          confirmLabel="Retire Domain"
+          title={`Retire ${confirmDrainDomain.name}?`}
+          description={`Raises a retire-domain proposal for approval — it does NOT act yet. Once approved in the infrastructure decisions panel, a supervised run stops sending, cancels the InboxKit subscriptions (ends future billing), sets catch-all forwarding to the master inbox, tags the ${confirmDrainDomain.count} mailbox${confirmDrainDomain.count !== 1 ? "es" : ""} retired, and deploys reserves to replace them. Mailboxes keep receiving replies until their prepaid period expires. (Worst health on ${confirmDrainDomain.name}: ${confirmDrainDomain.health}%.)`}
+          confirmLabel="Raise retire proposal"
           onConfirm={() => {
             const d = confirmDrainDomain
             setConfirmDrainDomain(null)
-            handleDrain(d.name)
+            handleDrain(d.name, d.count)
           }}
           variant="default"
         />
