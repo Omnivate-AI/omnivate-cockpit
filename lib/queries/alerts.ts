@@ -109,13 +109,16 @@ export const getAlertCounts = cache(
   }> => {
     const supabase = createServerClient()
 
-    // Sidebar badge counts ACTIONABLE open alerts only (migration 008)
+    // Sidebar badge counts ACTIONABLE, UN-ACKNOWLEDGED open alerts only
+    // (migration 008 tier + Phase 8 acknowledge). An acked alert is not
+    // "needs attention".
     const [unresolvedRes, resolvedRes] = await Promise.all([
       supabase
         .from("vw_cockpit_alerts")
         .select("*", { count: "exact", head: true })
         .eq("status", "open")
-        .eq("tier", "actionable"),
+        .eq("tier", "actionable")
+        .is("acknowledged_at", null),
       supabase
         .from("vw_cockpit_alerts")
         .select("*", { count: "exact", head: true })
@@ -133,10 +136,12 @@ export const getRecentAlerts = cache(
   async (limit: number, client?: string | null): Promise<RecentAlert[]> => {
     const supabase = createServerClient()
 
+    // "Recent alerts" is a needs-attention preview → un-acknowledged only.
     let query = supabase
       .from("vw_cockpit_alerts")
       .select("*")
       .eq("status", "open")
+      .is("acknowledged_at", null)
       .order("created_at", { ascending: false })
       .limit(limit)
 
@@ -212,17 +217,22 @@ export const getClientAlertData = cache(
       (resolvedRes.data ?? []) as AlertWithDomain[]
     ).map(normalize)
 
-    // Urgency counts come from ACTIONABLE alerts only (migration 008) —
-    // maintenance noise is what made the old counts untrusted.
-    const actionable = unresolved.filter((a) => a.tier !== "maintenance")
+    // Urgency counts come from ACTIONABLE, UN-ACKNOWLEDGED alerts only
+    // (migration 008 tier + Phase 8 acknowledge). Acked alerts stay in the
+    // list (greyed) but never count as "needs attention".
+    const needsAction = unresolved.filter(
+      (a) => a.tier !== "maintenance" && !a.acknowledged_at
+    )
     const summary: ClientAlertSummary = {
-      critical: actionable.filter((a) =>
+      critical: needsAction.filter((a) =>
         ["critical", "high"].includes(a.severity)
       ).length,
-      warning: actionable.filter((a) =>
+      warning: needsAction.filter((a) =>
         ["warning", "medium"].includes(a.severity)
       ).length,
-      maintenance: unresolved.length - actionable.length,
+      maintenance: unresolved.filter(
+        (a) => a.tier === "maintenance" && !a.acknowledged_at
+      ).length,
       resolvedThisWeek: recentlyResolved.length,
     }
 
@@ -241,6 +251,7 @@ export const getTopAlerts = cache(
       )
       .eq("status", "open")
       .eq("tier", "actionable") // the banner only promotes act-now alerts
+      .is("acknowledged_at", null) // …that haven't been acknowledged (Phase 8)
       .order("severity", { ascending: true }) // critical before warning (alphabetical)
       .order("created_at", { ascending: false })
       .limit(limit)
@@ -283,6 +294,7 @@ export const getGlobalAlertSummary = cache(
           .from("vw_cockpit_alerts")
           .select("*", { count: "exact", head: true })
           .eq("status", "open")
+          .is("acknowledged_at", null)
           .in("severity", ["critical", "high"])
       ),
       withTier(
@@ -290,6 +302,7 @@ export const getGlobalAlertSummary = cache(
           .from("vw_cockpit_alerts")
           .select("*", { count: "exact", head: true })
           .eq("status", "open")
+          .is("acknowledged_at", null)
           .in("severity", ["warning", "medium"])
       ),
       supabase

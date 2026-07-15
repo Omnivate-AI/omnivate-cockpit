@@ -76,6 +76,16 @@ Per Amzat: the V2 data-accuracy validation is done fresh in Phase 2 — treat pr
 
 _(sessions append findings here — newest first)_
 
+### 2026-07-15 (later) — Phase 8 done (Alerts that behave like alerts)
+
+Change list: **`docs/V2-PHASE8-ALERTS.md`**. All four deliverables on the shared `alerts-table.tsx` (used by BOTH the global `/alerts` page and the client Alerts tab — fixing one covered both).
+
+- **Acknowledge = real state** (migration 019 added `acknowledged_at`/`acknowledged_by` to sp_infra_alerts + cockpit_alerts, appended to `vw_cockpit_alerts`). The ack route now stamps ack + KEEPS `status='open'` (was a hard-resolve, answer #8). UI: greyed, kept in an "Acknowledged & maintenance" collapsed group, timestamped. Every urgency count (`getAlertCounts` sidebar, `getTopAlerts` banner, `getGlobalAlertSummary` cards, `getClientAlertData.summary`, `getRecentAlerts`) now filters `.is("acknowledged_at", null)`. DB-proven (staged+reverted): ack kept the alert open, dropped needs-action 29→28, stayed visible.
+- **Context routing** (`lib/alerts-presentation.ts alertContextRoute`): keyword-matched per type → Mailboxes / Overview(Ready Bank) / Placement. Inline "View X →" per row + in the detail panel.
+- **Tier-aware severity** (`alertTone`): red only for actionable critical/high; amber warning; blue info; **neutral for ALL maintenance** regardless of raw severity — kills the 49 maintenance/high `warmup_needs_reconnect`(33)/`warmup_reapply_failed`(16) rows wearing red. Legend added.
+- **De-verbose**: needs-action table first; acknowledged+maintenance collapsed below; resolved collapsed under that; summary cards kept.
+- **GOTCHA:** `CREATE OR REPLACE VIEW` can't insert columns mid-list ("cannot change name of view column") — appended ack cols at the end of the view (cockpit reads SELECT *, so order is immaterial). Orphaned dead code confirmed unmounted: `alert-table.tsx` (singular, holds the disabled RotateButton), `resolved-section.tsx`, `dismiss-dialog.tsx` — the Phase-7-flagged dead RotateButton is here, so it's genuinely unreachable.
+
 ### 2026-07-15 — Phase 7 done (Mailboxes & orders: make actions real)
 
 Ran under **ultracode**: a 7-agent understanding workflow (`wf_35c4991a`) mapped the mailbox tab, decisions model, retire/order wiring, warmup math, plugin execution, and live Supabase schema before any edit; a 6-claim × 3-skeptic adversarial safety workflow verified the retire/order flow before ship. Change list + Omar decisions: **`docs/V2-PHASE7-MAILBOX-ACTIONS.md`**. Plugin side: **email-infra PR #2** (`feat/retire-engine-phase7`).

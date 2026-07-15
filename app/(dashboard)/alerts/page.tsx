@@ -8,6 +8,8 @@ import {
 } from "@/lib/queries"
 import { AlertFilters } from "@/components/alerts/alert-filters"
 import { AlertsTable } from "@/components/alerts/alerts-table"
+import { alertTone } from "@/lib/alerts-presentation"
+import { cn } from "@/lib/utils"
 import { SectionFreshness } from "@/components/shared/section-freshness"
 import { Pagination } from "@/components/shared/pagination"
 import { MetricCard } from "@/components/shared/metric-card"
@@ -141,11 +143,10 @@ export default async function AlertsPage({ searchParams }: AlertsPageProps) {
                       <tr key={alert.id} className="border-b last:border-0 opacity-60">
                         <td className="px-4 py-3">
                           <span
-                            className={
-                              alert.severity === "critical"
-                                ? "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400"
-                                : "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
-                            }
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize",
+                              alertTone(alert.severity, alert.tier).badge
+                            )}
                           >
                             {alert.severity}
                           </span>

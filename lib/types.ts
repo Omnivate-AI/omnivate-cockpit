@@ -88,6 +88,13 @@ export interface MailboxAlert {
   slack_message_ts: string | null
   resolved_by: string | null
   resolved_at: string | null
+  // Acknowledged (V2 Phase 8, migration 019): a real, VISIBLE state distinct
+  // from resolved. status stays 'open'; these stamp who/when acked. An
+  // acknowledged alert is greyed, kept in the list, and excluded from every
+  // "needs attention" count. "acknowledged" = status='open' AND
+  // acknowledged_at IS NOT NULL.
+  acknowledged_at: string | null
+  acknowledged_by: string | null
   created_at: string
   // Alert rebuild (Omar 2026-07-06, migration 008): 'actionable' = a human
   // must act now; 'maintenance' = self-healing retries / cleanup chores.

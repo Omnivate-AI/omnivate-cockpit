@@ -223,6 +223,8 @@ Per active client (Acceleration Partners, Cylindo, PayCaptain, Omnivate):
 
 ---
 
+> ✅ **Done (2026-07-15)** — acknowledge is a real greyed/visible state excluded from counts (migration 019); resolve keeps its note + per-type context routing; severity is tier-aware (nothing informational renders red) with a legend; page leads with needs-action, rest collapsed. `docs/V2-PHASE8-ALERTS.md`.
+
 ## Phase 8 — Alerts that behave like alerts
 
 **Goal:** the alert list becomes something you *process*, not something that vanishes or shouts.
