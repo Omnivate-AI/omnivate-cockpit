@@ -30,7 +30,7 @@ Everything you asked us to verify gets verified fresh as part of this plan — t
 | 6 | Ready Bank truth, client by client | 1 session | ✅ Done (2026-07-14) — per-client reconciliation + migration 018 (emailed = live truth, qualified = not-tracked semantics); gap list in `docs/V2-PHASE6-READY-BANK-GAPS.md` |
 | 7 | Mailboxes & orders — make actions real | 1–2 sessions | ✅ Done (2026-07-14) — retire on the decisions model + supervised retire-engine (staged-proven), order path un-stranded, worst/at-risk + weighted split charts, domain drill-down; `docs/V2-PHASE7-MAILBOX-ACTIONS.md` + email-infra PR #2 |
 | 8 | Alerts that behave like alerts | 1 session | ☐ Not started |
-| 9 | One home: merge Digest into Command Center + final QA + Loom | 1 session | ☐ Not started |
+| 9 | One home: merge Digest into Command Center + final QA + Loom | 1 session | ✅ Done (2026-07-15) — digest merged (one code path), /digest redirects, links swept, regression green; `docs/V2-PHASE9-ONE-HOME.md`. Loom = human-owned (script in the doc). **V2 CLOSED.** |
 
 **Schedule at sprint pace:** Day 1 → Phase 1 + start Phase 2 · Day 2 → finish 2 + Phase 3 · Day 3 → Phases 4 + 5 · Day 4 → Phases 6 + 8 · Day 5 → Phase 7 · Day 6 → Phase 9 + the Loom. Roughly six working days.
 

@@ -363,6 +363,10 @@ export interface ClientSummary {
   /** Total replies in the range — reply-rate numerator (total replies,
       matching the Command Center KPI; RC-4). */
   periodReplies: number
+  /** Positive replies (Interested + human-action-required) in the range —
+      range-summed so the per-client breakdown sums to the headline KPI
+      (V2 Phase 9 digest merge). */
+  periodPositives: number
 }
 
 export interface DailySendDataPoint {
@@ -448,6 +452,7 @@ export const getClientSummaries = cache(
     const latestByClient = new Map<string, PerfRow>()
     const periodSendsByClient = new Map<string, number>()
     const periodRepliesByClient = new Map<string, number>()
+    const periodPositivesByClient = new Map<string, number>()
     const factDatesByClient = new Map<string, string[]>()
     for (const r of (perfRows ?? []) as PerfRow[]) {
       if (!latestByClient.has(r.client)) latestByClient.set(r.client, r)
@@ -458,6 +463,10 @@ export const getClientSummaries = cache(
       periodRepliesByClient.set(
         r.client,
         (periodRepliesByClient.get(r.client) ?? 0) + (r.reply_count ?? 0)
+      )
+      periodPositivesByClient.set(
+        r.client,
+        (periodPositivesByClient.get(r.client) ?? 0) + (r.positive_replies_count ?? 0)
       )
       const dates = factDatesByClient.get(r.client) ?? []
       dates.push(r.snapshot_date)
@@ -546,6 +555,7 @@ export const getClientSummaries = cache(
         alertCount: alertCounts.get(config.client) ?? 0,
         periodTarget: periodTargetFor(config),
         periodReplies: periodRepliesByClient.get(config.client) ?? 0,
+        periodPositives: periodPositivesByClient.get(config.client) ?? 0,
       })
     }
 
@@ -593,6 +603,10 @@ export const getClientSummaries = cache(
         ),
         periodReplies: childConfigs.reduce(
           (sum, c) => sum + (periodRepliesByClient.get(c.client) ?? 0),
+          0
+        ),
+        periodPositives: childConfigs.reduce(
+          (sum, c) => sum + (periodPositivesByClient.get(c.client) ?? 0),
           0
         ),
       })
@@ -930,170 +944,3 @@ export const getClientProviderSplit = cache(
       .sort((a, b) => b.sent - a.sent)
   }
 )
-
-// --- Digest ---
-
-export interface DigestClientRow {
-  client: string
-  displayName: string
-  emailsSent: number
-  interestedReplies: number
-  totalReplies: number
-  replyRate: number
-  allTimeEmailsSent: number
-  allTimeInterested: number
-}
-
-export interface DigestData {
-  date: string
-  clients: DigestClientRow[]
-  totalSent: number
-  totalInterested: number
-  totalReplies: number
-  overallReplyRate: number
-}
-
-export const getDigestData = cache(async (): Promise<DigestData> => {
-  const supabase = createServerClient()
-  const activeSlugs = await getActiveClients()
-
-  if (activeSlugs.length === 0)
-    return {
-      date: new Date().toISOString().split("T")[0],
-      clients: [],
-      totalSent: 0,
-      totalInterested: 0,
-      totalReplies: 0,
-      overallReplyRate: 0,
-    }
-
-  const { cutoff: cutoffStr } = await rangeWindow(7)
-
-  const [{ data: configRows }, { data: perfRows }, { data: lifetimeRows }] =
-    await Promise.all([
-      supabase
-        .from("client_analytics_config")
-        .select("client, display_name, parent_client")
-        .in("client", activeSlugs),
-      supabase
-        .from("vw_cockpit_daily_client_perf")
-        .select("*")
-        .in("client", activeSlugs)
-        .gte("snapshot_date", cutoffStr)
-        .order("snapshot_date", { ascending: false }),
-      supabase
-        .from("vw_cockpit_client_lifetime")
-        .select("client, all_time_emails_sent, all_time_interested, all_time_replies")
-        .in("client", activeSlugs),
-    ])
-
-  const configBySlug = new Map<
-    string,
-    { client: string; display_name: string | null; parent_client: string | null }
-  >()
-  for (const c of configRows ?? []) configBySlug.set(c.client, c)
-
-  const latestByClient = new Map<string, PerfRow>()
-  for (const s of (perfRows ?? []) as PerfRow[]) {
-    if (!latestByClient.has(s.client)) latestByClient.set(s.client, s)
-  }
-
-  const lifetimeByClient = new Map<
-    string,
-    { all_time_emails_sent: number; all_time_interested: number; all_time_replies: number }
-  >()
-  for (const r of lifetimeRows ?? []) lifetimeByClient.set(r.client, r)
-
-  // Group children into parents (via app config hierarchy)
-  const parentGroups = new Map<string, string[]>()
-  const standalones: string[] = []
-  for (const slug of activeSlugs) {
-    const parent = configBySlug.get(slug)?.parent_client
-    if (parent) {
-      const group = parentGroups.get(parent) ?? []
-      group.push(slug)
-      parentGroups.set(parent, group)
-    } else {
-      standalones.push(slug)
-    }
-  }
-
-  const titleize = (slug: string) =>
-    slug
-      .split(/[-_]/)
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ")
-
-  function buildRow(
-    slug: string,
-    displayName: string,
-    childSlugs: string[]
-  ): DigestClientRow {
-    let sent = 0,
-      interested = 0,
-      dayReplies = 0,
-      allTimeSent = 0,
-      allTimeInt = 0
-    for (const cs of childSlugs) {
-      const snap = latestByClient.get(cs)
-      if (snap) {
-        sent += snap.emails_sent_count ?? 0
-        interested += snap.positive_replies_count ?? 0
-        dayReplies += snap.reply_count ?? 0
-      }
-      const lt = lifetimeByClient.get(cs)
-      if (lt) {
-        allTimeSent += lt.all_time_emails_sent ?? 0
-        allTimeInt += lt.all_time_interested ?? 0
-      }
-    }
-    return {
-      client: slug,
-      displayName,
-      emailsSent: sent,
-      interestedReplies: interested,
-      // Interim (RC-7; page merges into the Command Center in Phase 9):
-      // every number in the row is now the LATEST BUSINESS DAY — the old mix
-      // (day sends beside lifetime replies and an all-time interested rate)
-      // put three time scopes in one table row.
-      totalReplies: dayReplies,
-      replyRate: sent > 0 ? (dayReplies / sent) * 100 : 0,
-      allTimeEmailsSent: allTimeSent,
-      allTimeInterested: allTimeInt,
-    }
-  }
-
-  const clientRows: DigestClientRow[] = []
-
-  for (const slug of standalones) {
-    if (parentGroups.has(slug)) continue
-    const dn = configBySlug.get(slug)?.display_name ?? titleize(slug)
-    clientRows.push(buildRow(slug, dn, [slug]))
-  }
-
-  for (const [parentSlug, children] of parentGroups) {
-    clientRows.push(buildRow(parentSlug, titleize(parentSlug), children))
-  }
-
-  clientRows.sort((a, b) => b.emailsSent - a.emailsSent)
-
-  const totalSent = clientRows.reduce((s, c) => s + c.emailsSent, 0)
-  const totalInterested = clientRows.reduce((s, c) => s + c.interestedReplies, 0)
-  const totalReplies = clientRows.reduce((s, c) => s + c.totalReplies, 0)
-
-  const latestDate = Array.from(latestByClient.values()).reduce<string | null>(
-    (max, r) => (max === null || r.snapshot_date > max ? r.snapshot_date : max),
-    null
-  )
-
-  return {
-    date: latestDate ?? new Date().toISOString().split("T")[0],
-    clients: clientRows,
-    totalSent,
-    totalInterested,
-    totalReplies,
-    // Same scope as every other headline on the page (latest business day) —
-    // the old all-time interested/sent (0.11%) sat beside day-scoped numbers.
-    overallReplyRate: totalSent > 0 ? (totalReplies / totalSent) * 100 : 0,
-  }
-})

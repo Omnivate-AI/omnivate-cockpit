@@ -103,12 +103,14 @@ export function CommandPalette({ clients }: CommandPaletteProps) {
         keywords: ["compare"],
       },
       {
-        id: "nav-digest",
-        label: "Daily Digest",
+        // V2 Phase 9 — the digest merged into the Command Center; keep the
+        // search entry (digest/summary keywords) pointing home.
+        id: "nav-daily-summary",
+        label: "Daily Summary",
         category: "Navigation",
         icon: FileText,
-        action: () => navigate("/digest"),
-        keywords: ["digest", "summary", "report"],
+        action: () => navigate("/"),
+        keywords: ["digest", "summary", "report", "daily"],
       },
       {
         id: "nav-orders",

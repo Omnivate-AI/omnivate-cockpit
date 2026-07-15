@@ -76,6 +76,17 @@ Per Amzat: the V2 data-accuracy validation is done fresh in Phase 2 — treat pr
 
 _(sessions append findings here — newest first)_
 
+### 2026-07-15 — Phase 9 done (one home; digest merged) — V2 CLOSED
+
+Change list: `docs/V2-PHASE9-ONE-HOME.md`.
+
+- **Merge:** Command Center gained a `DailySummary` (`components/dashboard/daily-summary.tsx`) — per-client breakdown table + copy-to-clipboard Slack text (`lib/digest-text.ts`) + explicit all-clear. Built from the SAME `getGlobalKPIs` + `getClientSummaries` the KPIs/grid use (one code path). Added `ClientSummary.periodPositives` (range-summed) so the breakdown sums to the "Positive Replies" KPI. **Deleted `getDigestData` + `DigestData`/`DigestClientRow`** (167 lines) — no second path remains.
+- **/digest → `redirect("/")`**; removed from sidebar (`FileText` import dropped) + command-palette entry repointed home (keeps digest/summary keywords). `digest/loading.tsx` removed.
+- **Links sweep (live re-confirm):** conversation links 8/8 resolve to the correct lead (Tyler-Lopez/RC-9 fix holds); 148/149 interested leads carry a map-id (1 without → no link by design); 21/21 active campaigns carry a smartlead_campaign_id.
+- **e2e:** digest.spec rewritten (redirect + merged Daily Summary assertions); smoke nav list drops `/digest`.
+- **GOTCHA:** `getClientSummaries` sets `latest.emails_sent_count` = range-summed sends only when `days>1` (via `periodSends`); at days=1 it's the latest-day perf row (same value). The breakdown reply-rate uses `periodReplies / latest.emails_sent_count` — consistent with the cards. `getGlobalKPIs.emailsSentYesterday` is range-summed (misnomer field name kept for back-compat).
+- **The Loom is human-owned** — can't be recorded from here; a 6-beat script is in the phase doc. Everything it demos is live + verified. This is the only V2 "Done when" item not machine-completable.
+
 ### 2026-07-15 (later) — Phase 8 done (Alerts that behave like alerts)
 
 Change list: **`docs/V2-PHASE8-ALERTS.md`**. All four deliverables on the shared `alerts-table.tsx` (used by BOTH the global `/alerts` page and the client Alerts tab — fixing one covered both).

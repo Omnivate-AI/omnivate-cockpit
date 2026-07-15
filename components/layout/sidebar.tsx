@@ -11,7 +11,6 @@ import {
   LogOut,
   Plus,
   GitCompareArrows,
-  FileText,
   CreditCard,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -56,7 +55,8 @@ const TOP_NAV_ITEMS = [
 ] as const
 
 const BOTTOM_NAV_ITEMS = [
-  { label: "Digest", href: "/digest", icon: FileText },
+  // Digest merged into the Command Center (V2 Phase 9) — nav entry removed;
+  // /digest redirects home.
   { label: "Orders", href: "/orders", icon: CreditCard },
   { label: "Alerts", href: "/alerts", icon: Bell },
   { label: "Audit Log", href: "/audit", icon: ScrollText },

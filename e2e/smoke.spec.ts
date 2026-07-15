@@ -44,7 +44,8 @@ test.describe("authenticated shell", () => {
     for (const href of [
       "/",
       "/compare",
-      "/digest",
+      // /digest removed in V2 Phase 9 — the digest merged into the Command
+      // Center (it now redirects home).
       "/orders",
       "/alerts",
       "/audit",

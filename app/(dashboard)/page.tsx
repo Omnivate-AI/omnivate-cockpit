@@ -8,6 +8,7 @@ import { getRecentSpamRisks } from "@/lib/queries/campaigns"
 import { replyRateColor } from "@/lib/design-tokens"
 import { MetricCard } from "@/components/shared/metric-card"
 import { ClientSummaryGrid } from "@/components/dashboard/client-summary-grid"
+import { DailySummary } from "@/components/dashboard/daily-summary"
 import { AlertsBanner } from "@/components/dashboard/alerts-banner"
 import { SpamRiskBanner } from "@/components/dashboard/spam-risk-banner"
 import { SectionFreshness } from "@/components/shared/section-freshness"
@@ -146,6 +147,20 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
               />
             </RangeVeil>
           </div>
+
+          {/* Daily Summary — the merged /digest: per-client breakdown +
+              copy-to-clipboard Slack text + all-clear, from the SAME data
+              as the KPIs above (V2 Phase 9; /digest now redirects here). */}
+          <RangeVeil>
+            <DailySummary
+              summaries={summaries}
+              kpis={kpis}
+              spamRisks={spamRisks}
+              alerts={topAlerts}
+              rangeLabel={rangeLabel}
+              asOfLabel={days === 1 ? anchorLabel : (kpis.latestSnapshotDate ? `as of ${anchorLabel}` : null)}
+            />
+          </RangeVeil>
         </div>
       </RangeTransitionProvider>
     </Suspense>
