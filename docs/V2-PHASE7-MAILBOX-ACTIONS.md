@@ -52,6 +52,12 @@ The scope label ("orders placed via this system since Jun 2026 — the original 
 | 5 | `burnt-domains-list.tsx` is orphaned dead code | Not mounted anywhere, so unreachable — left as-is; can be deleted in a cleanup. |
 | 6 | Domain "age" = oldest box's `created_at` | Domains themselves aren't consistently in `sp_domains` for AP/PayCaptain, so the drill-down derives everything (age, health, tags) from the mailbox inventory — self-consistent with the rest of the tab. |
 
+## Safety verification (adversarial)
+
+Because the retire path cancels real InboxKit billing and stops live sending, the flow was stress-tested by an adversarial workflow — 6 safety claims, 3 skeptics each, prompted to *refute*. **All 6 held (0 broken.)** Claims verified: raising a decision spends/destroys nothing; the engine never executes a non-approved decision; it defaults dry-run; an approved retire drains only the payload domain's boxes; it doesn't cancel billing itself (deferred +30d); a manual order request only proposes (purchase needs a separate supervised `place-order --apply`).
+
+The one dissent (a TOCTOU on approval-revert + a null-`approved_by` case) was hardened rather than left as a caveat: the `retire-engine` now **re-reads the decision immediately before the drain and refuses unless it is still `approved` AND carries a recorded `approved_by`**. Both branches proven with a drain-safe nonexistent-domain decision (null-approver → skipped; with-approver → proceeds). email-infra PR #2 carries the hardenings.
+
 ## Where things live
 - Retire route: `app/api/clients/[slug]/retire-domain/route.ts`; button: `components/mailboxes/mailbox-inventory-table.tsx`.
 - Charts: `components/mailboxes/mailbox-health-chart.tsx` (bands query `getClientDomainHealthBands`), `components/mailboxes/lifecycle-history-card.tsx` (split), warmup weighting `lib/queries/portfolio.ts`.
