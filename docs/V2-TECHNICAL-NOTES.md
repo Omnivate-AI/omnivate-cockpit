@@ -76,6 +76,16 @@ Per Amzat: the V2 data-accuracy validation is done fresh in Phase 2 — treat pr
 
 _(sessions append findings here — newest first)_
 
+### 2026-07-14 (late night) — Phase 6 done (Ready Bank truth, client by client)
+
+Migration 018 applied live + verified; the reconciliation table + gap list live in **`docs/V2-PHASE6-READY-BANK-GAPS.md`** (Omar's ops decisions: PayCaptain qual pass or "by design", undecided backlogs, ~18.5k uploaded-never-emailed recycle cohort, Omnivate schema, Cylindo ledger drift).
+
+- **Reconciliation method:** per client, one query joining `v_{slug}_tam` to `v_{slug}_actually_emailed` (live view: send events ∪ repliers ∪ hist floor, emails pre-lowered) comparing OLD lines (uploaded-flag) vs NEW (emailed). Uploaded overstated contact on every client: AP +3,730 · Cylindo +6,084 · PayCaptain +3,835 · Omnivate +4,874. Cylindo three-way check also caught the LEDGER column (`smartlead_emailed` 17,683 vs live 20,120) undercounting — the cockpit reads the view, but flag it to the ledger project.
+- **Qualified truth:** AP 54,480 (11,495 undecided) · Cylindo 22,918 (21,966 undecided — TAM already fit-gated by `fit_reach_out`, so the plan's "28k" measures 22k post-gate) · PayCaptain **193 of 92,967 = never ran → NULL** · Omnivate **no column → NULL**. `cockpit_ready_bank_daily.qualified` dropped NOT NULL/DEFAULT; NULL = "Not tracked" end-to-end (fn → query type `number | null` → null-aware parent aggregation → card).
+- **Card** (`ready-bank-card.tsx`): "In campaigns" → **"Emailed"**; the 5% client-side guess is gone; the split bar gained an amber **uploaded-never-emailed** segment (computed as verified − emailed − available); a `<details>` ⓘ block explains every line per client (QUALIFIED_NOTES keyed by slug). "Available" hero = verified AND never emailed AND not uploaded (conservative — queued leads not counted).
+- **Fn design:** same per-client EXCEPTION-guarded blocks; the actually-emailed JOIN runs in the daily 09:12 UTC cron (~seconds; Cylindo TAM 45k × aggregated events was fine interactively). Snapshot repopulated same-day; values matched the reconciliation exactly (AP emailed 23,685 vs 23,681 measured minutes earlier = live events landing — the view is genuinely live).
+- CC `ready_leads` (client summary "Ready" line) inherits the conservative availability automatically via `readyBank.available_email` — no CC code change.
+
 ### 2026-07-14 (night) — Phase 5 done (charts & campaigns restructure + graph overhaul)
 
 Commit `0f84a40`, deployed + prod-verified same evening as Phase 4 (plan explicitly allows 4+5 pairing). **Omar-facing change list: `docs/V2-PHASE5-CHART-CHANGES.md`** — 8 judgment calls flagged for his review per the acceptance criteria.
