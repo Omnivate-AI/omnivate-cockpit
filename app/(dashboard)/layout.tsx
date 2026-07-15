@@ -15,11 +15,17 @@ export default async function DashboardLayout({
 }) {
   const supabase = createServerClient()
 
-  // Fetch unresolved alert count for sidebar badge (sp_infra_alerts)
+  // Sidebar badge = NEEDS-ACTION count: open + actionable + un-acknowledged
+  // (migration 008 tier + Phase 8 acknowledge). It used to count every open
+  // alert incl. maintenance (~109) — the raw pile the alert rebuild set out
+  // to stop trusting; now it matches the "needs attention" number the rest
+  // of the app shows.
   const { count } = await supabase
     .from("vw_cockpit_alerts")
     .select("*", { count: "exact", head: true })
     .eq("status", "open")
+    .eq("tier", "actionable")
+    .is("acknowledged_at", null)
 
   // Active clients from sp_clients, fallback to hardcoded list
   let clients: string[]
