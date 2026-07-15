@@ -47,6 +47,9 @@ The table now leads with the **needs-action** list (actionable, un-acknowledged)
 - **The global `/alerts` page still defaults to the `actionable` tier filter** (Omar's 07-06 rebuild) — so maintenance lives behind the tier filter there; on the client Alerts tab all tiers show, with maintenance collapsed. Both honour "nothing informational red."
 - **Orphaned dead code left as-is:** `alert-table.tsx` (singular, with the disabled RotateButton), `resolved-section.tsx`, `dismiss-dialog.tsx` are unmounted — the live path is entirely `alerts-table.tsx`. Candidates for a cleanup delete.
 
+## Prod-verification bonus fix
+Found during prod verification: the **sidebar alert badge** (`app/(dashboard)/layout.tsx`) counted every open alert (~109, incl. maintenance + acknowledged) — the raw pile the alert rebuild exists to stop trusting. Fixed to open + actionable + un-acknowledged; the badge now reads **28**, matching the summary cards and the rest of the app. Verified on production alongside the acknowledged-greyed row.
+
 ## Where things live
 - Migration: `db/migrations/cockpit_read_models_019.sql` (ack columns + view).
 - Route: `app/api/alerts/[id]/acknowledge/route.ts` (acks, doesn't resolve).
