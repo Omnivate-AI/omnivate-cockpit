@@ -124,18 +124,14 @@ export function CampaignComparisonDialog({
       return { ...cd, byDate }
     })
 
-    // Sends: daily delta of all_time_emails_sent
-    const sendsData = dates.map((date, i) => {
+    // Sends: the view's DIRECT daily `emails_sent` (NOT a delta of
+    // all_time_emails_sent — that column is the flat lifetime total, so
+    // deltas were always 0; same bug the detail panel had).
+    const sendsData = dates.map((date) => {
       const row: Record<string, string | number> = { date: formatDate(date) }
       for (let ci = 0; ci < indexed.length; ci++) {
         const curr = indexed[ci].byDate.get(date)
-        const prevDate = i > 0 ? dates[i - 1] : null
-        const prev = prevDate ? indexed[ci].byDate.get(prevDate) : null
-        const delta =
-          curr && prev
-            ? Math.max(0, curr.all_time_emails_sent - prev.all_time_emails_sent)
-            : 0
-        row[`c${ci}`] = delta
+        row[`c${ci}`] = curr?.emails_sent ?? 0
       }
       return row
     })

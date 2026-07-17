@@ -27,8 +27,9 @@
   - [ ] A **"Copy to Clipboard"** button → copies a plain-text Slack summary (Emails Sent / Positive Replies / Total Replies / Reply Rate, then a per-client list, then deliverability + alerts). Paste it into Slack to check the format.
   - [ ] A **per-client breakdown table** (Client · Sent · Positive · Total Replies · Reply Rate). The column totals should reconcile with the KPI cards above (they read the *same* data now).
   - [ ] An explicit **"All clear"** green line appears when there are no deliverability issues and nothing needs action.
-- [ ] **Client cards grid** — each card's reply-rate is range-scoped (total replies ÷ sends); a card shows "N sending" mailboxes where relevant.
-- [ ] **Alerts banner** only appears when there are actionable alerts; **Spam-risk banner** only when recent spam tests failed.
+- [ ] **Client cards grid** — each card's reply-rate is range-scoped (total replies ÷ sends).
+- [ ] **Sends vs Target on the cards shows the raw NUMBERS**, not just the % — the bar label reads e.g. "Sends vs Target · 1,410 / 1,500" with the "94%" on the right (post-launch tweak 2026-07-15). It grounds the percentage.
+- [ ] **The red "Active Alerts" banner is GONE from the Command Center** (post-launch tweak 2026-07-15). Alerts live on the Alerts page + the sidebar badge now. The **Spam-risk banner** stays (only appears when recent spam tests failed).
 
 ### 3. Client page → **Overview** tab
 Open any client (e.g. **Cylindo**, which has the richest data).
@@ -62,8 +63,9 @@ Open any client (e.g. **Cylindo**, which has the richest data).
   - [ ] "Past Campaigns" collapsible unchanged.
 - [ ] Every "reply rate" here is relabelled "**Positive Reply Rate**".
 - [ ] **Compare** button (needs ≥2 campaigns) → dialog. In the dialog:
-  - [ ] Overlaid **Daily Sends** and **Positive Reply Rate** lines per campaign.
+  - [ ] Overlaid **Daily Sends** and **Positive Reply Rate** lines per campaign — **Daily Sends now shows real data** (post-launch fix 2026-07-15; see below).
   - [ ] A new **"Inbox Placement — latest test"** panel: one bar per campaign (inbox %, coloured by threshold, with the test date). [Was] a "view details" text note.
+- [ ] **Expand a campaign card** (click a row) → the detail dropdown. The **"Daily Sends (14d)" bar chart now has data** — [Was] all-zero/empty bars because it reconstructed sends from the campaign *lifetime* total (which is flat every day, so every delta was 0) → [Now] it reads the view's real per-day `emails_sent` column (same fix applied to the Compare dialog). The "Positive Reply Rate % (14d)" line was already correct.
 
 ### 6. Client page → **Mailboxes** tab
 This tab got the most work (Phase 7).

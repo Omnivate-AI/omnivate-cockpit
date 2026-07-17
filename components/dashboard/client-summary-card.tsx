@@ -128,11 +128,12 @@ export function ClientSummaryCard({
             </span>
           </div>
 
-          {/* Send progress — only meaningful when a target is configured */}
+          {/* Send progress — shows the raw numbers (sent / target) alongside
+              the % so "94%" is grounded, e.g. 1,410 / 1,500 (Omar 2026-07-15). */}
           {periodTarget > 0 ? (
             <ProgressBar
               value={Math.min(sendPct, 100)}
-              label="Sends vs Target"
+              label={`Sends vs Target · ${periodSends.toLocaleString()} / ${Math.round(periodTarget).toLocaleString()}`}
               thresholds={{ warning: 100, critical: 50 }}
             />
           ) : (

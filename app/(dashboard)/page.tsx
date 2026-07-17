@@ -9,7 +9,6 @@ import { replyRateColor } from "@/lib/design-tokens"
 import { MetricCard } from "@/components/shared/metric-card"
 import { ClientSummaryGrid } from "@/components/dashboard/client-summary-grid"
 import { DailySummary } from "@/components/dashboard/daily-summary"
-import { AlertsBanner } from "@/components/dashboard/alerts-banner"
 import { SpamRiskBanner } from "@/components/dashboard/spam-risk-banner"
 import { SectionFreshness } from "@/components/shared/section-freshness"
 import { TimeRangeFilter } from "@/components/dashboard/time-range-filter"
@@ -90,8 +89,9 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
             <TimeRangeFilter />
           </div>
 
-          {/* Alerts Banner — only renders when alerts exist */}
-          <AlertsBanner alerts={topAlerts} />
+          {/* Active-alerts banner removed from the Command Center per Omar
+              (2026-07-15) — alerts live on the Alerts page + the sidebar badge.
+              topAlerts is still fetched for the Daily Summary copy text below. */}
 
           {/* Spam Risk Banner — only renders when recent spam issues exist */}
           <SpamRiskBanner risks={spamRisks} />

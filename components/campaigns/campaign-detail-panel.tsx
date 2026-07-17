@@ -189,16 +189,16 @@ export function CampaignDetailPanel({
 
   const { history, placement } = data
 
-  // Compute daily sends as day-over-day deltas of all_time_emails_sent
-  const chartData = history.map((d, i) => {
-    const prevAllTime = i > 0 ? history[i - 1].all_time_emails_sent : d.all_time_emails_sent
-    const dailySent = Math.max(0, d.all_time_emails_sent - prevAllTime)
-    return {
-      date: formatDate(d.snapshot_date),
-      sent: dailySent,
-      replyRate: d.positive_reply_rate,
-    }
-  })
+  // Daily sends = the view's DIRECT daily `emails_sent` column. (The old code
+  // reconstructed it as a day-over-day delta of `all_time_emails_sent`, but
+  // that column is the campaign LIFETIME total — flat on every row — so every
+  // delta was 0 and the chart drew all-zero bars. `emails_sent` is the real
+  // per-day figure, the same source the reply-rate line already uses.)
+  const chartData = history.map((d) => ({
+    date: formatDate(d.snapshot_date),
+    sent: d.emails_sent ?? 0,
+    replyRate: d.positive_reply_rate,
+  }))
 
   return (
     <div className="space-y-5 border-t bg-muted/30 p-4">
