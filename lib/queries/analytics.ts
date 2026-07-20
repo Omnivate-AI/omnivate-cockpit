@@ -4,6 +4,7 @@ import { getActiveClients, resolveClientSlugs } from "@/lib/queries/clients"
 import { getReadyBankBySlug, type ReadyBankRow } from "@/lib/queries/ready-bank"
 import type { ClientConfig, ClientSnapshot, DailyTargets } from "@/types/analytics"
 import { getTargetForDate } from "@/types/analytics"
+import { toBusinessDay } from "@/lib/range-utils"
 
 // Performance reads come from the sp_* read-models:
 //   vw_cockpit_daily_client_perf  — per-client daily sends/replies/positive (from sp_daily_campaign_facts)
@@ -330,13 +331,17 @@ export const getLatestFactDate = cache(async (): Promise<string | null> => {
 })
 
 /**
- * The `days` calendar days ENDING AT the latest fact date. days=1 → exactly
- * the latest fact date ("yesterday" in business-day terms).
+ * The `days` calendar days ENDING AT the latest BUSINESS day. days=1 → exactly
+ * that business day ("Yesterday" — Fri when checked Sat/Sun/Mon, since weekend
+ * fact rows are near-empty and must be skipped; Omar 2026-07-20). Callers
+ * upper-bound their queries to `anchor` so trailing weekend rows after it are
+ * excluded from the window.
  */
 export async function rangeWindow(
   days: number
 ): Promise<{ cutoff: string; anchor: string | null }> {
-  const anchor = await getLatestFactDate()
+  const raw = await getLatestFactDate()
+  const anchor = raw ? toBusinessDay(raw) : null
   const end = anchor ? new Date(`${anchor}T00:00:00Z`) : new Date()
   end.setUTCDate(end.getUTCDate() - (days - 1))
   return { cutoff: end.toISOString().split("T")[0], anchor }
@@ -384,13 +389,16 @@ export const getGlobalKPIs = cache(async (days: number = 1): Promise<GlobalKPIs>
   const supabase = createServerClient()
   const activeSlugs = await getActiveClients()
 
-  const { cutoff: cutoffStr } = await rangeWindow(days)
+  const { cutoff: cutoffStr, anchor } = await rangeWindow(days)
 
   const perfRes = await supabase
     .from("vw_cockpit_daily_client_perf")
     .select("client, snapshot_date, emails_sent_count, reply_count, positive_replies_count")
     .in("client", activeSlugs)
     .gte("snapshot_date", cutoffStr)
+    // Bound to the business-day anchor so trailing weekend rows (near-empty)
+    // don't leak into the window — days=1 = exactly the last business day.
+    .lte("snapshot_date", anchor ?? cutoffStr)
     .order("snapshot_date", { ascending: false })
 
   let emailsSentPeriod = 0
@@ -480,6 +488,7 @@ export const getClientSummaries = cache(
       .select("*")
       .in("client", activeSlugs)
       .gte("snapshot_date", cutoffStr)
+      .lte("snapshot_date", anchor ?? cutoffStr)
       .order("snapshot_date", { ascending: false })
 
     const latestByClient = new Map<string, PerfRow>()
@@ -862,7 +871,7 @@ export const getDailySendHistory = cache(
     const supabase = createServerClient()
     const activeSlugs = await getActiveClients()
 
-    const { cutoff: cutoffStr } = await rangeWindow(days)
+    const { cutoff: cutoffStr, anchor } = await rangeWindow(days)
 
     const [{ data: configs }, { data: rows }] = await Promise.all([
       supabase
@@ -874,6 +883,7 @@ export const getDailySendHistory = cache(
         .select("snapshot_date, emails_sent_count")
         .in("client", activeSlugs)
         .gte("snapshot_date", cutoffStr)
+        .lte("snapshot_date", anchor ?? cutoffStr)
         .order("snapshot_date", { ascending: true }),
     ])
 

@@ -13,6 +13,14 @@ The cockpit reads the last **complete business day** from the daily sync; there 
 - `app/(dashboard)/page.tsx` — `RANGE_LABELS["1d"]` `"Today"` → `"Yesterday"`.
 - The KPI cards already stamp the actual date (e.g. "Fri, 10 Jul") for the Mon/weekend case, so a Monday honestly reads Friday's date — kept.
 
+### A1/A5 refinement — weekend-aware anchor (Omar 2026-07-20)
+
+The "Yesterday" anchor was the latest fact date (raw `MAX`), but **weekend fact rows exist** (near-empty stray weekend sends/replies), so on a Monday it landed on **Sunday** (8 sent / 0 replies) instead of **Friday** (4,974 / 153). Fixed:
+- `lib/range-utils.ts` — new `toBusinessDay(date)`: walks back over Sat/Sun to the last weekday (Sat→Fri, Sun→Fri, Mon→Fri).
+- `lib/queries/analytics.ts` — `rangeWindow` anchors on `toBusinessDay(latestFactDate)`; `getGlobalKPIs` / `getClientSummaries` / `getDailySendHistory` now upper-bound `snapshot_date <= anchor` so trailing weekend rows are excluded (days=1 = exactly the last business day).
+- `lib/queries.ts` — `getFreshness().latestFactDate` also business-day-adjusted so the "Data as of" line matches the KPIs.
+- Effect: on Mon/Sat/Sun, "Yesterday" = **Friday**; Tue–Fri = the prior weekday. No change on normal weekdays.
+
 ## A5 — Default view = yesterday, not the 7-day roll-up
 
 Every time you navigated back to the Command Center it reset to 7 days.

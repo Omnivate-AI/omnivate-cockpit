@@ -23,3 +23,20 @@ export function parseRangeDays(range: string | undefined): number {
   const match = RANGE_OPTIONS.find((r) => r.value === range)
   return match?.days ?? 1
 }
+
+/**
+ * The most recent weekday (Mon–Fri) on or before the given date. Weekend fact
+ * rows DO exist (near-zero stray weekend sends/replies), so the "Yesterday" /
+ * latest-business-day anchor must skip them (Omar 2026-07-20): checked on a
+ * Monday it resolves to the previous Friday, not Sunday. Sat→Fri, Sun→Fri;
+ * a weekday returns itself. UTC to match the UTC snapshot_date dates.
+ */
+export function toBusinessDay(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00Z`)
+  let dow = d.getUTCDay() // 0=Sun … 6=Sat
+  while (dow === 0 || dow === 6) {
+    d.setUTCDate(d.getUTCDate() - 1)
+    dow = d.getUTCDay()
+  }
+  return d.toISOString().split("T")[0]
+}

@@ -1,5 +1,6 @@
 import { cache } from "react"
 import { createServerClient } from "@/lib/supabase/server"
+import { toBusinessDay } from "@/lib/range-utils"
 import type {
   LifecycleStatus,
   MailboxAccount,
@@ -625,7 +626,11 @@ export const getFreshness = cache(async (): Promise<FreshnessInfo> => {
 
   return {
     lastSyncAt: data?.last_sync_at ?? null,
-    latestFactDate: data?.latest_fact_date ?? null,
+    // "Data as of" the latest BUSINESS day (Fri on Sat/Sun/Mon) so the freshness
+    // line matches the weekend-skipping KPI anchor (Omar 2026-07-20).
+    latestFactDate: data?.latest_fact_date
+      ? toBusinessDay(data.latest_fact_date)
+      : null,
     latestSendEventAt: data?.latest_send_event_at ?? null,
     latestReplyAt: data?.latest_reply_at ?? null,
   }
