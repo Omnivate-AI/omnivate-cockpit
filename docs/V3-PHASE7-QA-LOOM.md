@@ -40,4 +40,5 @@ Close: "every number was checked against Smartlead/Supabase; the two data bugs (
 ## Follow-ups
 - ✅ **F4 (done 2026-07-20)** — "Became interested" sourced from the first captured reply. (Meeting-booked column dropped per Amzat — not needed.)
 - ✅ **e2e refresh (done 2026-07-20)** — suite green against prod (36 passed).
-- **Phase 6 Option B** — agent auto-propose of at-risk/burnt actions, in the email-infra plugin (separate repo).
+- **Phase 6 Option B** — ~80% already in the email-infra `daily-routine.mjs` (at-risk/burn → alerts; drift → cockpit-approvable decisions). Remaining delta: at-risk/burn → action *proposals* in Steps 2/4. **ON HOLD** (2026-07-20) — the email-infra repo has uncommitted burn-escalation WIP; pick up on a clean branch once it lands.
+- **"Meeting booked"** — dropped (Amzat, not needed).

@@ -27,7 +27,15 @@ The A/B/C fork:
 - **B — agent auto-propose:** the email-infra daily routine auto-raises the actions; needs an **email-infra plugin change (separate repo)** — a follow-up.
 - **C — both:** agent proposes, cockpit is the human gate.
 
-Built **A** (which is also C's cockpit half) because it's buildable in the cockpit now and delivers the daily-visibility Omar asked for. If Omar wants the agent to auto-propose (B/full-C), that's a scoped follow-up in the email-infra plugin — flagged, not done here.
+Built **A** (which is also C's cockpit half) because it's buildable in the cockpit now and delivers the daily-visibility Omar asked for.
+
+### Option B status (investigated 2026-07-20) — ~80% already exists; ON HOLD
+
+The email-infra `daily-routine.mjs` already implements most of B: Step 2 detects at-risk (`LOW_REP` warmup) → alert; Step 3 raises cockpit-approvable `sp_decisions`; Step 4 detects burn → alert (destructive handling kept out of auto-exec). The `raiseDecision()` → `sp_decisions` → cockpit DecisionsPanel approval loop is live.
+
+**Remaining delta for full B:** turn the at-risk (LOW_REP) + burn findings into cockpit-approvable **action proposals** (rest/rotate/replace decisions) instead of plain alerts — a narrow change in daily-routine Steps 2/4.
+
+**ON HOLD (Amzat, 2026-07-20):** the email-infra repo is mid-task — uncommitted burn-escalation WIP (`_escalate-burnt.mjs`, ClickUp 869e6kpka) on branch `feat/blacklist-badge-endpoint`. Not touching it to avoid colliding. Pick up the delta on a clean branch once that WIP lands.
 
 ## Verification
 - Portfolio `burnt_mailboxes` verified (0 now); at-risk AP 7 / Cylindo 11.
