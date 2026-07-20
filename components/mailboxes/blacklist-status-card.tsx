@@ -10,7 +10,7 @@ import type { BlacklistSummary, BlacklistRow } from "@/lib/queries/orders"
  * path; clean is a compact all-clear; couldnt_check is disclosed, not hidden.
  */
 export function BlacklistStatusCard({ summary }: { summary: BlacklistSummary }) {
-  const { rows, listed, cleanCount, uncheckableCount, latestCheckAt } = summary
+  const { rows, listed, smartleadFlagged, cleanCount, uncheckableCount, latestCheckAt } = summary
 
   if (rows.length === 0) {
     return (
@@ -52,7 +52,15 @@ export function BlacklistStatusCard({ summary }: { summary: BlacklistSummary }) 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {hasListings && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-2.5 py-1 font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-400">
-              {listed.length} listed
+              {listed.length} confirmed listed
+            </span>
+          )}
+          {smartleadFlagged.length > 0 && (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
+              title="Smartlead's UI 'Blacklisted' badge — shared-IP / SURBL noise, not a confirmed DNSBL listing"
+            >
+              {smartleadFlagged.length} Smartlead-flagged (unverified)
             </span>
           )}
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
@@ -89,10 +97,38 @@ export function BlacklistStatusCard({ summary }: { summary: BlacklistSummary }) 
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
-            No domains on any monitored blacklist.
+            No domains on any authoritative DNSBL.
             {uncheckableCount > 0 &&
               ` ${uncheckableCount} of ${rows.length} couldn't be checked on the last run (DNSBL zone refused/timed out) — they re-check daily.`}
           </p>
+        )}
+
+        {/* Smartlead UI-badge flags — surfaced but de-rated: not a confirmed
+            DNSBL listing (V3 Phase 5 blacklist reconciliation). */}
+        {smartleadFlagged.length > 0 && (
+          <details className="group rounded-md border border-dashed border-amber-300 px-3 py-2 dark:border-amber-900">
+            <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              <ShieldQuestion className="h-3.5 w-3.5" />
+              {smartleadFlagged.length} domain{smartleadFlagged.length === 1 ? "" : "s"} carry
+              Smartlead&apos;s UI &quot;Blacklisted&quot; badge — unverified
+            </summary>
+            <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+              Smartlead&apos;s badge fires on shared-IP / SURBL signals and is not a
+              confirmed listing on any authoritative DNSBL. Our own daily DNSBL check
+              shows these clean and inbox-placement stays ~100%, so they don&apos;t count
+              toward &quot;blacklisted&quot;. Listed for awareness:
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {smartleadFlagged.map((r) => (
+                <span
+                  key={r.domain}
+                  className="rounded bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground"
+                >
+                  {r.domain}
+                </span>
+              ))}
+            </div>
+          </details>
         )}
       </CardContent>
     </Card>

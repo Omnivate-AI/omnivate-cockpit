@@ -5,9 +5,11 @@ import {
   Bar,
   Cell,
   ComposedChart,
+  LabelList,
   Line,
   LineChart,
   BarChart,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -64,6 +66,13 @@ const WEEKEND_FILL = "#d1d5db" // gray — weekend sends (no target)
 const TARGET_STROKE = "#f59e0b" // amber target line
 const RATE_STROKE = "#10b981" // emerald rate line
 const POSITIVE_FILL = "#10b981" // emerald positive bars
+const WEEKEND_BAND = "#94a3b8" // slate — weekend background band (E2)
+
+// E3: a day with almost no sends but a stray reply (a weekend response-agent
+// reply, a straggler) produces a meaningless 30-60% reply rate that blows out
+// the whole trend's Y-axis. Below this send floor the day's rate is treated as
+// "no meaningful rate" (null) and bridged, instead of drawn as a spike.
+const MIN_SENDS_FOR_RATE = 20
 
 function windowFor(
   range: TimeRange,
@@ -122,6 +131,48 @@ function isWeekend(dateStr: string): boolean {
   return day === 0 || day === 6
 }
 
+/**
+ * Fill the series to CONTINUOUS calendar days between the first and last point
+ * (facts skip days with no activity — mostly weekends). Missing days become
+ * zero rows so the x-axis has a real column for every weekend, which is what
+ * makes the weekend shading (E2) land where the weekends actually are and the
+ * gaps read as "we don't send at weekends", not "data missing".
+ */
+function fillDaily(points: PerformanceHistoryPoint[]): PerformanceHistoryPoint[] {
+  if (points.length === 0) return []
+  const byDate = new Map(points.map((p) => [p.date, p]))
+  const out: PerformanceHistoryPoint[] = []
+  const d = new Date(`${points[0].date}T00:00:00`)
+  const end = new Date(`${points[points.length - 1].date}T00:00:00`)
+  while (d <= end) {
+    const ds = format(d, "yyyy-MM-dd")
+    out.push(
+      byDate.get(ds) ?? { date: ds, emailsSent: 0, positiveReplies: 0, totalReplies: 0 }
+    )
+    d.setDate(d.getDate() + 1)
+  }
+  return out
+}
+
+/** Contiguous weekend runs (e.g. Sat→Sun) as [x1,x2] category spans for the
+    background ReferenceArea bands (E2). */
+function weekendSpans(dates: string[]): { x1: string; x2: string }[] {
+  const spans: { x1: string; x2: string }[] = []
+  let start: string | null = null
+  let prev: string | null = null
+  for (const d of dates) {
+    if (isWeekend(d)) {
+      if (start == null) start = d
+      prev = d
+    } else if (start != null && prev != null) {
+      spans.push({ x1: start, x2: prev })
+      start = prev = null
+    }
+  }
+  if (start != null && prev != null) spans.push({ x1: start, x2: prev })
+  return spans
+}
+
 export function OverviewPerformance({ history, config, customRange }: OverviewPerformanceProps) {
   const [range, setRange] = useState<TimeRange>(customRange ? "custom" : "week")
 
@@ -134,7 +185,7 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
   const targets = (config.daily_targets as DailyTargets | null) ?? null
   const baseTarget = config.daily_email_target ?? 0
 
-  const { points, prevPoints, chartData } = useMemo(() => {
+  const { points, prevPoints, chartData, weekends } = useMemo(() => {
     const { start, end, prevStart, prevEnd } = windowFor(range, customRange)
     const inWindow = (p: PerformanceHistoryPoint, s: Date, e: Date) => {
       const d = new Date(`${p.date}T00:00:00`)
@@ -144,7 +195,11 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
       .filter((p) => inWindow(p, start, end))
       .sort((a, b) => a.date.localeCompare(b.date))
     const prevPoints = history.filter((p) => inWindow(p, prevStart, prevEnd))
-    const chartData = points.map((p) => {
+    // Continuous daily series so every weekend has a real column to shade (E2)
+    // and the rate line bridges gaps cleanly (E3). Sums below still use the
+    // original fact `points`, so the zero-fill can't change any KPI total.
+    const filled = fillDaily(points)
+    const chartData = filled.map((p) => {
       const target = getTargetForDate(p.date, baseTarget, targets)
       return {
         date: p.date,
@@ -152,10 +207,16 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
         target,
         positive: p.positiveReplies,
         totalReplies: p.totalReplies,
-        rate: p.emailsSent > 0 ? (p.totalReplies / p.emailsSent) * 100 : null,
+        // E3: only real send days get a plotted rate; low-volume days (chiefly
+        // weekends) are nulled so one stray reply can't spike the whole axis.
+        rate:
+          p.emailsSent >= MIN_SENDS_FOR_RATE
+            ? (p.totalReplies / p.emailsSent) * 100
+            : null,
       }
     })
-    return { points, prevPoints, chartData }
+    const weekends = weekendSpans(filled.map((p) => p.date))
+    return { points, prevPoints, chartData, weekends }
   }, [history, range, customRange, baseTarget, targets])
 
   const current = sumPoints(points)
@@ -213,11 +274,12 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
         </div>
         <DateRangePicker from={customRange?.from} to={customRange?.to} />
       </div>
-      {range === "custom" && customLabel && (
-        <p className="text-xs text-muted-foreground -mt-2">
-          Showing {customLabel} (vs the preceding period of equal length)
-        </p>
-      )}
+      {/* Always label the active window (Omar V3 D2 — the old cards read
+          "all time, all time" while others said nothing). */}
+      <p className="text-xs text-muted-foreground -mt-2">
+        Showing {rangeLabel}
+        {range !== "all" ? " · vs the preceding period of equal length" : ""}
+      </p>
 
       {/* KPI cards for the selected window */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -248,7 +310,84 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
         />
       </div>
 
-      {/* Chart 1 — Sends vs Target */}
+      {/* Chart 1 — Positive Replies (the hero metric; top per Omar V3 E1).
+          Value labels make each day's count legible; weekend bands (E2). */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="text-base font-medium">
+              Positive Replies — {rangeLabel}
+            </CardTitle>
+            <span className="text-sm tabular-nums">
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                {current.positive.toLocaleString()}
+              </span>{" "}
+              <span className="text-xs text-muted-foreground">in period</span>
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {chartData.length === 0 ? (
+            <EmptyChart />
+          ) : (
+            <div className="h-[240px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 18, right: 10, left: 0, bottom: 5 }}>
+                  {weekends.map((w) => (
+                    <ReferenceArea
+                      key={`wk-${w.x1}`}
+                      x1={w.x1}
+                      x2={w.x2}
+                      fill={WEEKEND_BAND}
+                      fillOpacity={0.16}
+                      stroke="none"
+                    />
+                  ))}
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={(v) => format(new Date(`${v}T00:00:00`), "MMM d")}
+                    tick={{ fontSize: 11 }}
+                    stroke="hsl(var(--muted-foreground))"
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 11 }}
+                    stroke="hsl(var(--muted-foreground))"
+                    tickLine={false}
+                    axisLine={false}
+                    width={36}
+                  />
+                  <Tooltip content={<PositiveTooltip />} />
+                  <Bar
+                    dataKey="positive"
+                    name="Positive replies"
+                    fill={POSITIVE_FILL}
+                    radius={[3, 3, 0, 0]}
+                    animationDuration={600}
+                  >
+                    <LabelList
+                      dataKey="positive"
+                      position="top"
+                      formatter={(value: number | string) =>
+                        Number(value) > 0 ? value : ""
+                      }
+                      fill="#059669"
+                      fontSize={10}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Interested + human-action-required · gray band = weekend
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Chart 2 — Sends vs Target */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-medium">
@@ -262,6 +401,16 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
             <div className="h-[260px]">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  {weekends.map((w) => (
+                    <ReferenceArea
+                      key={`wk-${w.x1}`}
+                      x1={w.x1}
+                      x2={w.x2}
+                      fill={WEEKEND_BAND}
+                      fillOpacity={0.16}
+                      stroke="none"
+                    />
+                  ))}
                   <XAxis
                     dataKey="date"
                     tickFormatter={(v) => format(new Date(`${v}T00:00:00`), "MMM d")}
@@ -309,12 +458,13 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
             </div>
           )}
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Red bar = under that day&apos;s target · gray = weekend · dashed line = daily target
+            Red bar = under that day&apos;s target · gray band = weekend · dashed line = daily target
           </p>
         </CardContent>
       </Card>
 
-      {/* Chart 2 — Reply Rate trend + change */}
+      {/* Chart 3 — Reply Rate trend + change (LAST per Omar V3 E3; low-volume
+          days omitted so a stray weekend reply can't spike the whole axis) */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -337,6 +487,16 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
             <div className="h-[240px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  {weekends.map((w) => (
+                    <ReferenceArea
+                      key={`wk-${w.x1}`}
+                      x1={w.x1}
+                      x2={w.x2}
+                      fill={WEEKEND_BAND}
+                      fillOpacity={0.16}
+                      stroke="none"
+                    />
+                  ))}
                   <XAxis
                     dataKey="date"
                     tickFormatter={(v) => format(new Date(`${v}T00:00:00`), "MMM d")}
@@ -378,63 +538,8 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
             </div>
           )}
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Total replies ÷ sends per day · days with no sends are bridged · dashed = period average
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Chart 3 — Positive Replies (the count, and only the count) */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-base font-medium">
-              Positive Replies — {rangeLabel}
-            </CardTitle>
-            <span className="text-sm tabular-nums">
-              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                {current.positive.toLocaleString()}
-              </span>{" "}
-              <span className="text-xs text-muted-foreground">in period</span>
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {chartData.length === 0 ? (
-            <EmptyChart />
-          ) : (
-            <div className="h-[220px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={(v) => format(new Date(`${v}T00:00:00`), "MMM d")}
-                    tick={{ fontSize: 11 }}
-                    stroke="hsl(var(--muted-foreground))"
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    allowDecimals={false}
-                    tick={{ fontSize: 11 }}
-                    stroke="hsl(var(--muted-foreground))"
-                    tickLine={false}
-                    axisLine={false}
-                    width={36}
-                  />
-                  <Tooltip content={<PositiveTooltip />} />
-                  <Bar
-                    dataKey="positive"
-                    name="Positive replies"
-                    fill={POSITIVE_FILL}
-                    radius={[3, 3, 0, 0]}
-                    animationDuration={600}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Interested + human-action-required (current Smartlead category)
+            Total replies ÷ sends on real send days · low-volume days (e.g. weekends,
+            gray band) omitted so a stray reply can&apos;t skew the trend · dashed = period average
           </p>
         </CardContent>
       </Card>

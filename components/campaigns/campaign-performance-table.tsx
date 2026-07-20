@@ -353,6 +353,10 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
   const router = useRouter()
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [pausedCollapsed, setPausedCollapsed] = useState(true)
+  // Only the active-primary section is open on load; follow-up + referral
+  // start collapsed like Past (Omar V3 G1: "close these by default").
+  const [followUpCollapsed, setFollowUpCollapsed] = useState(true)
+  const [referralCollapsed, setReferralCollapsed] = useState(true)
   const [timeRange, setTimeRange] = useState<TimeRange>("all")
   const [compareOpen, setCompareOpen] = useState(false)
   const handleStatusChange = () => router.refresh()
@@ -503,10 +507,14 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
         </div>
       )}
 
-      {/* Follow-up Campaigns — reply-triggered subsequences */}
+      {/* Follow-up Campaigns — reply-triggered subsequences (collapsed by
+          default per Omar V3 G1) */}
       {activeFollowUp.length > 0 && (
         <div className="space-y-2">
-          <h3 className="flex items-center gap-2 text-sm font-medium">
+          <button
+            className="flex w-full items-center gap-2 text-sm font-medium"
+            onClick={() => setFollowUpCollapsed((v) => !v)}
+          >
             <span className="inline-block h-2 w-2 rounded-full bg-sky-500" />
             Follow-up Campaigns
             <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-normal text-sky-700 dark:bg-sky-950 dark:text-sky-300">
@@ -515,31 +523,45 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
             <span className="text-xs font-normal text-muted-foreground">
               reply-triggered follow-ups — low volume by design
             </span>
-          </h3>
-          <div className="space-y-2">
-            {activeFollowUp.map((campaign) => (
-              <CampaignCard
-                key={campaign.id}
-                campaign={campaign}
-                isExpanded={expandedId === campaign.smartlead_campaign_id}
-                onToggle={() =>
-                  setExpandedId(
-                    expandedId === campaign.smartlead_campaign_id
-                      ? null
-                      : campaign.smartlead_campaign_id
-                  )
-                }
-                onStatusChange={handleStatusChange}
-              />
-            ))}
+            <ChevronDown
+              className={cn(
+                "ml-auto h-4 w-4 text-muted-foreground transition-transform",
+                followUpCollapsed && "-rotate-90"
+              )}
+            />
+          </button>
+          <div
+            className="collapsible-content"
+            data-state={followUpCollapsed ? "closed" : "open"}
+          >
+            <div className="space-y-2">
+              {activeFollowUp.map((campaign) => (
+                <CampaignCard
+                  key={campaign.id}
+                  campaign={campaign}
+                  isExpanded={expandedId === campaign.smartlead_campaign_id}
+                  onToggle={() =>
+                    setExpandedId(
+                      expandedId === campaign.smartlead_campaign_id
+                        ? null
+                        : campaign.smartlead_campaign_id
+                    )
+                  }
+                  onStatusChange={handleStatusChange}
+                />
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Referral Campaigns */}
+      {/* Referral Campaigns (collapsed by default per Omar V3 G1) */}
       {activeReferral.length > 0 && (
         <div className="space-y-2">
-          <h3 className="flex items-center gap-2 text-sm font-medium">
+          <button
+            className="flex w-full items-center gap-2 text-sm font-medium"
+            onClick={() => setReferralCollapsed((v) => !v)}
+          >
             <span className="inline-block h-2 w-2 rounded-full bg-violet-500" />
             Referral Campaigns
             <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-normal text-violet-700 dark:bg-violet-950 dark:text-violet-300">
@@ -548,23 +570,34 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
             <span className="text-xs font-normal text-muted-foreground">
               referral outreach
             </span>
-          </h3>
-          <div className="space-y-2">
-            {activeReferral.map((campaign) => (
-              <CampaignCard
-                key={campaign.id}
-                campaign={campaign}
-                isExpanded={expandedId === campaign.smartlead_campaign_id}
-                onToggle={() =>
-                  setExpandedId(
-                    expandedId === campaign.smartlead_campaign_id
-                      ? null
-                      : campaign.smartlead_campaign_id
-                  )
-                }
-                onStatusChange={handleStatusChange}
-              />
-            ))}
+            <ChevronDown
+              className={cn(
+                "ml-auto h-4 w-4 text-muted-foreground transition-transform",
+                referralCollapsed && "-rotate-90"
+              )}
+            />
+          </button>
+          <div
+            className="collapsible-content"
+            data-state={referralCollapsed ? "closed" : "open"}
+          >
+            <div className="space-y-2">
+              {activeReferral.map((campaign) => (
+                <CampaignCard
+                  key={campaign.id}
+                  campaign={campaign}
+                  isExpanded={expandedId === campaign.smartlead_campaign_id}
+                  onToggle={() =>
+                    setExpandedId(
+                      expandedId === campaign.smartlead_campaign_id
+                        ? null
+                        : campaign.smartlead_campaign_id
+                    )
+                  }
+                  onStatusChange={handleStatusChange}
+                />
+              ))}
+            </div>
           </div>
         </div>
       )}

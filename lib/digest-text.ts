@@ -10,6 +10,8 @@ export interface DigestClientLine {
   positive: number
   totalReplies: number
   replyRate: number
+  /** Distinct people emailed in the range (V3 Phase 2). */
+  contacts?: number
 }
 
 export interface DigestTextInput {
@@ -20,6 +22,10 @@ export interface DigestTextInput {
   totalPositive: number
   totalReplies: number
   overallReplyRate: number
+  /** Emails sent ÷ positive replies for the range; null when 0 positives. */
+  emailsPerPositive: number | null
+  /** Distinct contacts ÷ positive replies for the range; null when 0. */
+  contactsPerPositive: number | null
   clients: DigestClientLine[]
   spamRisks: { campaign_name: string; client: string; spam_pct: number | null; test_date: string }[]
   alerts: { severity: string; title: string; client: string; domain_name: string }[]
@@ -28,6 +34,7 @@ export interface DigestTextInput {
 export function buildDigestSummaryText(d: DigestTextInput): string {
   const lines: string[] = []
   const pct = (v: number) => (v > 0 ? `${v.toFixed(2)}%` : "N/A")
+  const eff = (v: number | null) => (v == null ? "—" : Math.round(v).toLocaleString())
 
   lines.push(`Summary — ${d.rangeLabel}${d.asOfLabel ? ` (${d.asOfLabel})` : ""}`)
   lines.push("=".repeat(40))
@@ -37,6 +44,8 @@ export function buildDigestSummaryText(d: DigestTextInput): string {
   lines.push(`  Positive Replies: ${d.totalPositive.toLocaleString()} (Interested + human-action-required)`)
   lines.push(`  Total Replies: ${d.totalReplies.toLocaleString()}`)
   lines.push(`  Overall Reply Rate: ${pct(d.overallReplyRate)}`)
+  lines.push(`  Emails per Positive Reply: ${eff(d.emailsPerPositive)}`)
+  lines.push(`  Contacts per Positive Reply: ${eff(d.contactsPerPositive)}`)
   lines.push("")
   lines.push("PER CLIENT")
   if (d.clients.length === 0) {

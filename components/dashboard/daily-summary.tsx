@@ -38,9 +38,18 @@ export function DailySummary({
         positive: s.periodPositives,
         totalReplies: s.periodReplies,
         replyRate: sent > 0 ? (s.periodReplies / sent) * 100 : 0,
+        contacts: s.periodContacts,
       }
     })
     .sort((a, b) => b.sent - a.sent)
+
+  // Two efficiency metrics (V3 Phase 2 C1): emails / contacts to earn one
+  // positive reply, range-scoped. null when there are no positives yet.
+  const totalContacts = summaries.reduce((sum, s) => sum + (s.periodContacts ?? 0), 0)
+  const emailsPerPositive =
+    kpis.positiveReplies > 0 ? kpis.emailsSentYesterday / kpis.positiveReplies : null
+  const contactsPerPositive =
+    kpis.positiveReplies > 0 ? totalContacts / kpis.positiveReplies : null
 
   const text = buildDigestSummaryText({
     rangeLabel,
@@ -49,6 +58,8 @@ export function DailySummary({
     totalPositive: kpis.positiveReplies,
     totalReplies: kpis.totalReplies,
     overallReplyRate: kpis.overallReplyRate,
+    emailsPerPositive,
+    contactsPerPositive,
     clients: clientLines,
     spamRisks: spamRisks.map((r) => ({
       campaign_name: r.campaign_name,
@@ -93,23 +104,49 @@ export function DailySummary({
                   <th className="pb-2 pr-4 font-medium text-right">Sent</th>
                   <th className="pb-2 pr-4 font-medium text-right">Positive</th>
                   <th className="pb-2 pr-4 font-medium text-right">Total Replies</th>
-                  <th className="pb-2 font-medium text-right">Reply Rate</th>
+                  <th className="pb-2 pr-4 font-medium text-right">Reply Rate</th>
+                  <th
+                    className="pb-2 pr-4 font-medium text-right"
+                    title="Emails sent ÷ positive replies in this range"
+                  >
+                    Emails / Pos
+                  </th>
+                  <th
+                    className="pb-2 font-medium text-right"
+                    title="Distinct people emailed ÷ positive replies in this range"
+                  >
+                    Contacts / Pos
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {clientLines.map((c) => (
-                  <tr key={c.displayName} className="border-b last:border-0">
-                    <td className="py-2.5 pr-4 font-medium capitalize">{c.displayName}</td>
-                    <td className="py-2.5 pr-4 text-right tabular-nums">{c.sent.toLocaleString()}</td>
-                    <td className="py-2.5 pr-4 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
-                      {c.positive.toLocaleString()}
-                    </td>
-                    <td className="py-2.5 pr-4 text-right tabular-nums">{c.totalReplies.toLocaleString()}</td>
-                    <td className="py-2.5 text-right tabular-nums">
-                      {c.replyRate > 0 ? `${c.replyRate.toFixed(2)}%` : "N/A"}
-                    </td>
-                  </tr>
-                ))}
+                {clientLines.map((c) => {
+                  const emailsPerPos =
+                    c.positive > 0 ? Math.round(c.sent / c.positive) : null
+                  const contactsPerPos =
+                    c.positive > 0 && c.contacts != null
+                      ? Math.round(c.contacts / c.positive)
+                      : null
+                  return (
+                    <tr key={c.displayName} className="border-b last:border-0">
+                      <td className="py-2.5 pr-4 font-medium capitalize">{c.displayName}</td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums">{c.sent.toLocaleString()}</td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
+                        {c.positive.toLocaleString()}
+                      </td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums">{c.totalReplies.toLocaleString()}</td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums">
+                        {c.replyRate > 0 ? `${c.replyRate.toFixed(2)}%` : "N/A"}
+                      </td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums">
+                        {emailsPerPos != null ? emailsPerPos.toLocaleString() : "—"}
+                      </td>
+                      <td className="py-2.5 text-right tabular-nums">
+                        {contactsPerPos != null ? contactsPerPos.toLocaleString() : "—"}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

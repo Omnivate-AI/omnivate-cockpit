@@ -78,16 +78,30 @@ export interface BlacklistRow {
 
 export interface BlacklistSummary {
   rows: BlacklistRow[]
+  /** CONFIRMED authoritative DNSBL listings only — the ones that actually
+      warrant action. Excludes Smartlead's UI badge (V3 Phase 5). */
   listed: BlacklistRow[]
+  /** Smartlead's "Blacklisted" UI badge — shared-IP / SURBL noise, NOT a
+      confirmed DNSBL listing (all 135 estate-wide were these; placement stays
+      100% inbox). Surfaced separately, clearly de-rated. */
+  smartleadFlagged: BlacklistRow[]
   cleanCount: number
   uncheckableCount: number
   latestCheckAt: string | null
 }
 
+/** Smartlead's UI "Blacklisted" badge writes listed_on = "SmartleadBadge: …".
+    It is not an authoritative DNSBL check (Omar V3 blacklist reconciliation). */
+function isSmartleadBadge(r: BlacklistRow): boolean {
+  return (r.listed_on ?? "").toLowerCase().startsWith("smartleadbadge")
+}
+
 function summarizeBlacklist(rows: BlacklistRow[]): BlacklistSummary {
-  const listed = rows
-    .filter((r) => r.status === "listed")
-    .sort((a, b) => (a.severity === "high" ? -1 : 1) - (b.severity === "high" ? -1 : 1))
+  const bySeverity = (a: BlacklistRow, b: BlacklistRow) =>
+    (a.severity === "high" ? -1 : 1) - (b.severity === "high" ? -1 : 1)
+  const allListed = rows.filter((r) => r.status === "listed")
+  const listed = allListed.filter((r) => !isSmartleadBadge(r)).sort(bySeverity)
+  const smartleadFlagged = allListed.filter(isSmartleadBadge).sort(bySeverity)
   let latestCheckAt: string | null = null
   for (const r of rows) {
     if (r.last_checked_at && (!latestCheckAt || r.last_checked_at > latestCheckAt)) {
@@ -97,6 +111,7 @@ function summarizeBlacklist(rows: BlacklistRow[]): BlacklistSummary {
   return {
     rows,
     listed,
+    smartleadFlagged,
     cleanCount: rows.filter((r) => r.status === "clean").length,
     uncheckableCount: rows.filter((r) => r.status === "couldnt_check").length,
     latestCheckAt,

@@ -15,6 +15,8 @@ export interface PortfolioHealthRow {
   listed_domains: number
   non_retired_mailboxes: number
   active_mailboxes: number
+  /** Mailboxes marked burnt — need same-day replacement (V3 Phase 6). */
+  burnt_mailboxes: number
 }
 
 export const getPortfolioHealth = cache(

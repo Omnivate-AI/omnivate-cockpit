@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { TestTube2, ChevronDown, ChevronRight } from "lucide-react"
+import { TestTube2, ChevronDown, ChevronRight, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { DataAsOf } from "@/components/shared/data-as-of"
 import type { PlacementTestResult } from "@/lib/queries/campaigns"
@@ -67,6 +67,21 @@ export function PlacementTabView({ results }: PlacementTabViewProps) {
           warnWhenStale={false}
         />
       </div>
+
+      {/* H3 (Omar V3): placement is the ground-truth deliverability signal, so a
+          high inbox rate IS valid even when domains carry Smartlead's
+          "Blacklisted" badge — those are unverified shared-IP / SURBL noise, not
+          confirmed DNSBL listings (reconciled in Mailboxes → Blacklist Status). */}
+      <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-300">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>
+          Inbox placement is the ground-truth deliverability signal. A high inbox
+          rate is valid even if some domains show Smartlead&apos;s
+          &quot;Blacklisted&quot; badge — those are unverified shared-IP noise, not
+          confirmed DNSBL listings (see Mailboxes &rarr; Blacklist Status).
+        </span>
+      </div>
+
       <div className="rounded-md border p-4">
         <h3 className="text-sm font-medium mb-3">Inbox Placement Trend (Last 30 Days)</h3>
         <PlacementTrendChart results={results} />

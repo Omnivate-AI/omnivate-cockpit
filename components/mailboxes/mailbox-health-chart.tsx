@@ -1,10 +1,8 @@
 "use client"
 
 import {
-  ComposedChart,
-  Area,
   Line,
-  Bar,
+  LineChart,
   XAxis,
   YAxis,
   Tooltip,
@@ -73,9 +71,13 @@ export function MailboxHealthChart({ data }: MailboxHealthChartProps) {
         </div>
       )}
 
+      {/* Simplified per Omar V3 H1: just the weakest domain vs the 97 burn
+          line — the dual-axis median/p25/at-risk-bar version was unreadable.
+          The at-risk count still shows in the summary line above + the
+          hovercard; the chart itself now says ONE thing clearly. */}
       <div className="h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={points} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+          <LineChart data={points} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
             <XAxis
               dataKey="date"
               tickFormatter={(val) => format(new Date(`${val}T00:00:00`), "MMM d")}
@@ -85,7 +87,6 @@ export function MailboxHealthChart({ data }: MailboxHealthChartProps) {
               axisLine={false}
             />
             <YAxis
-              yAxisId="pct"
               domain={[
                 (dataMin: number) => Math.max(0, Math.floor(dataMin - 3)),
                 100,
@@ -97,19 +98,7 @@ export function MailboxHealthChart({ data }: MailboxHealthChartProps) {
               width={40}
               tickFormatter={(val) => `${val}%`}
             />
-            <YAxis
-              yAxisId="count"
-              orientation="right"
-              allowDecimals={false}
-              domain={[0, (m: number) => Math.max(4, m)]}
-              tick={{ fontSize: 11 }}
-              stroke="hsl(var(--muted-foreground))"
-              tickLine={false}
-              axisLine={false}
-              width={28}
-            />
             <ReferenceLine
-              yAxisId="pct"
               y={BURN_THRESHOLD}
               stroke="hsl(0, 84%, 60%)"
               strokeDasharray="6 3"
@@ -120,38 +109,7 @@ export function MailboxHealthChart({ data }: MailboxHealthChartProps) {
                 fontSize: 10,
               }}
             />
-            {/* At-risk domain count — soft amber bars behind the lines */}
-            <Bar
-              yAxisId="count"
-              dataKey="atRisk"
-              fill="hsl(38, 92%, 50%)"
-              fillOpacity={0.18}
-              barSize={14}
-              isAnimationActive={false}
-            />
-            {/* p25→median band = the bottom of the pack */}
-            <Area
-              yAxisId="pct"
-              dataKey="p25"
-              stroke="none"
-              fill="hsl(217, 91%, 60%)"
-              fillOpacity={0.08}
-              isAnimationActive={false}
-            />
             <Line
-              yAxisId="pct"
-              type="monotone"
-              dataKey="median"
-              name="Median domain"
-              stroke="hsl(217, 91%, 60%)"
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              dot={false}
-              isAnimationActive={false}
-            />
-            {/* The headline: the weakest domain each day */}
-            <Line
-              yAxisId="pct"
               type="monotone"
               dataKey="worst"
               name="Weakest domain"
@@ -162,12 +120,12 @@ export function MailboxHealthChart({ data }: MailboxHealthChartProps) {
               isAnimationActive={false}
             />
             <Tooltip content={<BandTooltip />} />
-          </ComposedChart>
+          </LineChart>
         </ResponsiveContainer>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Red = weakest domain · dashed = median · amber bars = domains below 97
-        (right axis). A healthy pool keeps the red line pinned to the top.
+        The single weakest domain each day vs the 97% burn line. A healthy pool
+        keeps it pinned near the top; a dip below 97 means a domain needs attention.
       </p>
     </div>
   )

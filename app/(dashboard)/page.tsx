@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { Mail, MessageSquare, MessageCircle, Percent } from "lucide-react"
+import { Mail, MessageSquare, MessageCircle, Percent, Send, Users } from "lucide-react"
 import { getGlobalKPIs, getClientSummaries } from "@/lib/queries/analytics"
 import { getPortfolioHealth } from "@/lib/queries/portfolio"
 import { PortfolioHealthStrip } from "@/components/dashboard/portfolio-health-strip"
@@ -8,6 +8,7 @@ import { getRecentSpamRisks } from "@/lib/queries/campaigns"
 import { replyRateColor } from "@/lib/design-tokens"
 import { MetricCard } from "@/components/shared/metric-card"
 import { ClientSummaryGrid } from "@/components/dashboard/client-summary-grid"
+import { NeedsActionPanel } from "@/components/dashboard/needs-action-panel"
 import { DailySummary } from "@/components/dashboard/daily-summary"
 import { SpamRiskBanner } from "@/components/dashboard/spam-risk-banner"
 import { SectionFreshness } from "@/components/shared/section-freshness"
@@ -16,7 +17,7 @@ import { RangeTransitionProvider, RangeVeil } from "@/components/dashboard/range
 import { parseRangeDays } from "@/lib/range-utils"
 
 const RANGE_LABELS: Record<string, string> = {
-  "1d": "Today",
+  "1d": "Yesterday",
   "7d": "Last 7 Days",
   "14d": "Last 14 Days",
   "30d": "Last 30 Days",
@@ -29,7 +30,7 @@ interface CommandCenterPageProps {
 export default async function CommandCenterPage({ searchParams }: CommandCenterPageProps) {
   const params = await searchParams
   const days = parseRangeDays(params.range)
-  const rangeKey = params.range ?? "7d"
+  const rangeKey = params.range ?? "1d"
 
   const [kpis, summaries, topAlerts, spamRisks, portfolio] = await Promise.all([
     getGlobalKPIs(days),
@@ -69,6 +70,17 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
   const replyRateLabel =
     days === 1 ? `Reply Rate (${anchorLabel})` : `Reply Rate (${rangeLabel})`
 
+  // Two efficiency KPIs (V3 Phase 2 B1): how many emails, and how many distinct
+  // people, to earn one positive reply — over the selected range. periodContacts
+  // is the distinct-contacts RPC summed across clients; null-guard on 0 positives.
+  const totalContacts = summaries.reduce((sum, s) => sum + (s.periodContacts ?? 0), 0)
+  const emailsPerPositive =
+    kpis.positiveReplies > 0 ? kpis.emailsSentYesterday / kpis.positiveReplies : null
+  const contactsPerPositive =
+    kpis.positiveReplies > 0 ? totalContacts / kpis.positiveReplies : null
+  const fmtEff = (v: number | null) => (v == null ? "—" : Math.round(v).toLocaleString())
+  const windowLabel = days === 1 ? anchorLabel : rangeLabel
+
   return (
     // Suspense: the transition provider reads useSearchParams (CSR bailout
     // requires a boundary). It wraps the filter AND the veiled regions so a
@@ -95,6 +107,11 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
 
           {/* Spam Risk Banner — only renders when recent spam issues exist */}
           <SpamRiskBanner risks={spamRisks} />
+
+          {/* Needs Action Today (V3 Phase 6) — cross-client at-risk / burnt /
+              confirmed-blacklisted mailboxes, front-and-center so nothing sits
+              undealt-with. Links to each client's Mailboxes tab to act. */}
+          <NeedsActionPanel rows={portfolio} />
 
           {/* KPI Cards with gradient background — range-scoped, veiled while switching */}
           <RangeVeil>
@@ -128,6 +145,23 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
                   }
                   icon={Percent}
                   valueColor={replyRateColors.text}
+                />
+              </div>
+
+              {/* Efficiency row (V3 Phase 2 B1) — the two "cost per positive
+                  reply" metrics Omar asked for, across all clients, range-scoped. */}
+              <div className="mt-4 grid gap-4 grid-cols-1 sm:grid-cols-2">
+                <MetricCard
+                  title="Emails per Positive Reply"
+                  value={fmtEff(emailsPerPositive)}
+                  icon={Send}
+                  subtitle={`Emails sent ÷ positive reply · ${windowLabel}`}
+                />
+                <MetricCard
+                  title="Contacts per Positive Reply"
+                  value={fmtEff(contactsPerPositive)}
+                  icon={Users}
+                  subtitle={`People emailed ÷ positive reply · ${windowLabel}`}
                 />
               </div>
             </div>

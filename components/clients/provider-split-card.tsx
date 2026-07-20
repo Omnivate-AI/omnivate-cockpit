@@ -116,8 +116,15 @@ function RecipientPanel({ rows }: { rows: RecipientProviderRow[] }) {
 
   return (
     <div className="border-t pt-3">
-      <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-        By recipient inbox
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        By recipient inbox provider
+      </p>
+      {/* E4 (Omar V3): this panel is the PROSPECTS' mail hosts, not our sending
+          infra — "Other" here is self-hosted / non-Google-or-Microsoft domains,
+          NOT SMTP sending (we send only from Google + Microsoft mailboxes). */}
+      <p className="mb-2 text-[11px] text-muted-foreground">
+        Where the people we email receive mail (their MX) — not how we send.
+        &quot;Other&quot; = self-hosted or non-Google/Microsoft domains.
       </p>
       <div className="space-y-3">
         {rows.map((r) => {
@@ -127,7 +134,9 @@ function RecipientPanel({ rows }: { rows: RecipientProviderRow[] }) {
             <div key={r.provider}>
               <div className="flex items-baseline justify-between text-sm">
                 <span className="font-medium">
-                  {PROVIDER_LABELS[r.provider] ?? r.provider}
+                  {r.provider === "other"
+                    ? "Other domains"
+                    : PROVIDER_LABELS[r.provider] ?? r.provider}
                 </span>
                 <span className="flex items-baseline gap-3 tabular-nums">
                   <span>

@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache"
 import { createServerClient } from "@/lib/supabase/server"
 
 export async function PUT(
@@ -70,6 +71,14 @@ export async function PUT(
   if (!data) {
     return Response.json({ error: "Client config not found" }, { status: 404 })
   }
+
+  // Bust the cached RSC data everywhere a target/config is read, so a saved
+  // change shows up without a hard refresh (Omar V3 A2 — Omnivate's 500→1,200
+  // edit didn't reflect on the Command Center because these pages stayed
+  // cached).
+  revalidatePath("/")
+  revalidatePath(`/clients/${slug}`)
+  revalidatePath("/compare")
 
   return Response.json({ success: true, data })
 }

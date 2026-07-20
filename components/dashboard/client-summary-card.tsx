@@ -131,11 +131,23 @@ export function ClientSummaryCard({
           {/* Send progress — shows the raw numbers (sent / target) alongside
               the % so "94%" is grounded, e.g. 1,410 / 1,500 (Omar 2026-07-15). */}
           {periodTarget > 0 ? (
-            <ProgressBar
-              value={Math.min(sendPct, 100)}
-              label={`Sends vs Target · ${periodSends.toLocaleString()} / ${Math.round(periodTarget).toLocaleString()}`}
-              thresholds={{ warning: 100, critical: 50 }}
-            />
+            // A4 (Omar V3): make the window explicit. The target is the sum of
+            // the client's WEEKDAY targets over the days in range (weekends
+            // contribute 0), compared to actual sends over the same days — so
+            // "below target" can't be blamed on counting weekends.
+            <div
+              title={
+                periodDays === 1
+                  ? "Yesterday's sends vs that day's target"
+                  : `Sends vs target across the last ${periodDays} days — weekday targets only, weekends excluded`
+              }
+            >
+              <ProgressBar
+                value={Math.min(sendPct, 100)}
+                label={`Sends vs Target · ${periodSends.toLocaleString()} / ${Math.round(periodTarget).toLocaleString()}`}
+                thresholds={{ warning: 100, critical: 50 }}
+              />
+            </div>
           ) : (
             <p className="text-xs text-muted-foreground">
               No daily send target set — configure in client Settings

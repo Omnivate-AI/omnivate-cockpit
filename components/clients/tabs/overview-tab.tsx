@@ -1,17 +1,15 @@
-import { Mail, ThumbsUp, MessageCircle, Percent, AlertTriangle, ArrowRight } from "lucide-react"
+import { AlertTriangle, ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { MetricCard } from "@/components/shared/metric-card"
 import { OverviewPerformance } from "@/components/clients/overview-performance"
 import { ReadyBankCard } from "@/components/clients/ready-bank-card"
 import { RunwayCapacityWidget } from "@/components/clients/runway-capacity-widget"
-import { replyRateColor, alertSeverityColor } from "@/lib/design-tokens"
+import { alertSeverityColor } from "@/lib/design-tokens"
 import { getClientPerformanceHistory, getClientProviderSplit } from "@/lib/queries/analytics"
 import { getClientRecipientSplit } from "@/lib/queries/portfolio"
 import { ProviderSplitCard } from "@/components/clients/provider-split-card"
 import { getClientAlerts } from "@/lib/queries/clients"
 import { getClientReadyBank } from "@/lib/queries/ready-bank"
-import { getClientTotalReplies } from "@/lib/queries/campaigns"
 import { formatDistanceToNow } from "date-fns"
 import { SectionFreshness } from "@/components/shared/section-freshness"
 import type { ClientSnapshot } from "@/types/analytics"
@@ -41,70 +39,28 @@ export async function OverviewTab({
   // Phase 5) — the range presets + custom picker filter it client-side, so
   // switches are instant. 365 days comfortably covers "All Time" (facts
   // begin 2026-06-09) and any custom range worth charting.
-  const [topAlerts, totalReplies, performanceHistory, providerSplit, recipientSplit, readyBank] = await Promise.all([
+  const [topAlerts, performanceHistory, providerSplit, recipientSplit, readyBank] = await Promise.all([
     getClientAlerts(clientSlug, false, 3),
-    getClientTotalReplies(clientSlug),
     getClientPerformanceHistory(clientSlug, 365),
     getClientProviderSplit(clientSlug, 14),
     getClientRecipientSplit(clientSlug, 14),
     getClientReadyBank(clientSlug),
   ])
 
-  const emailsSent = latestSnapshot?.emails_sent_count ?? null
-  const positiveReplies = latestSnapshot?.positive_replies_count ?? null
-  const allTimeSent = latestSnapshot?.all_time_emails_sent ?? 0
-  // Reply rate = TOTAL replies ÷ sent, all-time, labeled as such (RC-4 —
-  // this card previously computed all-time INTERESTED ÷ sent, the same
-  // ~0.1% formula Omar rejected on the Command Center).
-  const allTimeReplies = latestSnapshot?.all_time_replies ?? totalReplies
-  const replyRate = allTimeSent > 0 ? (allTimeReplies / allTimeSent) * 100 : null
-  const replyRateDisplay = replyRate !== null ? `${replyRate.toFixed(1)}%` : "No Data"
-  const replyRateColors = replyRate !== null ? replyRateColor(replyRate) : null
-  // Latest business day, shown in the card labels (facts are weekday-only,
-  // so "Yesterday" would lie on Sun/Mon — RC-3)
-  const factDayLabel = latestSnapshot?.snapshot_date
-    ? new Date(`${latestSnapshot.snapshot_date}T00:00:00Z`).toLocaleDateString(
-        "en-GB",
-        { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }
-      )
-    : "latest day"
-
   return (
     <div className="space-y-6">
-      {/* Latest-day + all-time KPI row */}
-      <div className="flex justify-end mb-1">
+      {/* Duplicate all-time KPI row removed (Omar V3 D1/D2): the sticky client
+          header already carries all-time Sent / Reply Rate / Mailboxes, and the
+          range bar's "All Time" preset reproduces the totals. So there is now
+          ONE positive-replies card and ONE total-replies card — both
+          range-scoped — and the range bar leads the page (was sandwiched
+          between two rows). */}
+      <div className="flex justify-end">
         <SectionFreshness factDate={latestSnapshot?.snapshot_date} />
       </div>
-      {/* Mailbox summary card removed — the Mailboxes tab owns that story (V2 Phase 1) */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          title={`Emails Sent (${factDayLabel})`}
-          value={emailsSent !== null ? emailsSent.toLocaleString() : "No Data"}
-          icon={Mail}
-        />
-        <MetricCard
-          title={`Positive Replies (${factDayLabel})`}
-          value={positiveReplies !== null ? positiveReplies.toLocaleString() : "No Data"}
-          icon={ThumbsUp}
-          subtitle="Interested + human-action-required"
-        />
-        <MetricCard
-          title="Total Replies (all-time)"
-          value={totalReplies.toLocaleString()}
-          icon={MessageCircle}
-        />
-        <MetricCard
-          title="Reply Rate (all-time)"
-          value={replyRateDisplay}
-          icon={Percent}
-          valueColor={replyRateColors?.text}
-          subtitle="Total replies ÷ emails sent"
-        />
-      </div>
 
-      {/* Range-scoped KPIs + the confirmed three-chart suite (V2 Phase 5):
-          sends vs target · reply rate trend + change · positive replies.
-          Replaces the old 7d/14d/30d fixed-window chart trio. */}
+      {/* Range-scoped KPIs + the three-chart suite (positive replies → sends
+          vs target → reply rate), one range selector driving all. */}
       <OverviewPerformance
         history={performanceHistory}
         config={config}

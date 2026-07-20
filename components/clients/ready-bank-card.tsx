@@ -141,12 +141,11 @@ export function ReadyBankCard({ data }: { data: ReadyBankRow | null }) {
         </div>
 
         {/* The numbers, each explained */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <ReadyBankStat
-            value={data.qualified_total}
-            label="Total reachable"
-            hint="Everyone we haven't ruled out (incl. LinkedIn-only)"
-          />
+        {/* Lead with Qualified, then Qualified + verified email (Omar V3 F1:
+            "start with qualified … then the ones that have verified emails
+            from our qualified term"). Total-reachable + the channel splits
+            follow. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <ReadyBankStat
             value={data.qualified ?? "Not tracked"}
             label="Qualified"
@@ -158,14 +157,29 @@ export function ReadyBankCard({ data }: { data: ReadyBankRow | null }) {
             muted={data.qualified == null}
           />
           <ReadyBankStat
+            value={
+              data.qualified == null
+                ? "Not tracked"
+                : data.qualified_email_verified ?? 0
+            }
+            label="Qualified + verified email"
+            hint="Qualified AND a working email — the pool we can email now"
+            muted={data.qualified == null}
+          />
+          <ReadyBankStat
+            value={data.qualified_total}
+            label="Total reachable"
+            hint="Everyone we haven't ruled out (incl. LinkedIn-only)"
+          />
+          <ReadyBankStat
             value={data.email_verified}
             label="Verified email"
-            hint="Email verified as working"
+            hint="Email verified as working (qualified or not)"
           />
           <ReadyBankStat
             value={data.linkedin_only}
             label="LinkedIn-only"
-            hint="No working email — reachable via LinkedIn"
+            hint="On LinkedIn, no working email — reachable via LinkedIn"
           />
           <ReadyBankStat
             value={data.in_campaign}

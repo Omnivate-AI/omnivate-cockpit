@@ -18,6 +18,9 @@ export interface ReadyBankRow {
       client (omnivate: no column; paycaptain: never populated, 0.2%).
       Migration 018 replaced the fake 0 / the card's client-side 5% guess. */
   qualified: number | null
+  /** qualified AND email-verified — "qualified leads we can actually email"
+      (V3 Phase 4 F1/F3). NULL when qualification isn't tracked for the client. */
+  qualified_email_verified: number | null
   email_verified: number
   linkedin_only: number
   /** TAM leads actually EMAILED at least once — live v_{slug}_actually_emailed
@@ -42,7 +45,7 @@ export const getClientReadyBank = cache(
     const { data } = await supabase
       .from("cockpit_ready_bank_daily")
       .select(
-        "client, snapshot_date, qualified_total, qualified, email_verified, linkedin_only, in_campaign, available_email"
+        "client, snapshot_date, qualified_total, qualified, qualified_email_verified, email_verified, linkedin_only, in_campaign, available_email"
       )
       .in("client", slugs)
       .order("snapshot_date", { ascending: false })
@@ -65,6 +68,7 @@ export const getClientReadyBank = cache(
       // qualification — a parent of untracked children must say "not
       // tracked", not 0 (migration 018 semantics).
       qualified: null,
+      qualified_email_verified: null,
       email_verified: 0,
       linkedin_only: 0,
       in_campaign: 0,
@@ -74,6 +78,10 @@ export const getClientReadyBank = cache(
       base.qualified_total += r.qualified_total ?? 0
       if (r.qualified != null) {
         base.qualified = (base.qualified ?? 0) + r.qualified
+      }
+      if (r.qualified_email_verified != null) {
+        base.qualified_email_verified =
+          (base.qualified_email_verified ?? 0) + r.qualified_email_verified
       }
       base.email_verified += r.email_verified ?? 0
       base.linkedin_only += r.linkedin_only ?? 0

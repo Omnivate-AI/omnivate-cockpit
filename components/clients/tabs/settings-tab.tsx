@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ interface SettingsTabProps {
 }
 
 export function SettingsTab({ clientSlug, config, estimatedCapacity }: SettingsTabProps) {
+  const router = useRouter()
   const [displayName, setDisplayName] = useState(config.display_name)
   const [dailyTarget, setDailyTarget] = useState(config.daily_email_target)
   const [dailyTargets, setDailyTargets] = useState<DailyTargets>(
@@ -88,6 +90,9 @@ export function SettingsTab({ clientSlug, config, estimatedCapacity }: SettingsT
       }
 
       toast.success("Settings saved successfully")
+      // Re-fetch server components so the new target reflects across the app
+      // immediately (pairs with revalidatePath in the PUT route — Omar V3 A2).
+      router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save settings")
     } finally {
@@ -112,16 +117,31 @@ export function SettingsTab({ clientSlug, config, estimatedCapacity }: SettingsT
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="daily-target">Default Daily Email Target</Label>
+              <Label htmlFor="daily-target">Weekday Send Target</Label>
               <Input
                 id="daily-target"
                 type="number"
                 min={1}
                 value={dailyTarget}
-                onChange={(e) => setDailyTarget(Number(e.target.value))}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  setDailyTarget(v)
+                  // Single number is master (Omar V3 A3): cascade to Mon–Fri so
+                  // the charts + Sends-vs-Target (which read the per-day grid)
+                  // always match what you set here. Weekends stay 0.
+                  setDailyTargets((prev) => ({
+                    ...prev,
+                    mon: v,
+                    tue: v,
+                    wed: v,
+                    thu: v,
+                    fri: v,
+                  }))
+                }}
               />
               <p className="text-xs text-muted-foreground">
-                Fallback when per-day targets are not set
+                Sets Mon–Fri (weekends 0). Sends-vs-Target and charts use this.
+                Editing it resets any per-day overrides below.
               </p>
             </div>
             <div className="space-y-2">

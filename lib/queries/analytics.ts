@@ -367,6 +367,9 @@ export interface ClientSummary {
       range-summed so the per-client breakdown sums to the headline KPI
       (V2 Phase 9 digest merge). */
   periodPositives: number
+  /** Distinct people emailed in the range (cockpit_contacts_emailed RPC) —
+      the denominator base for "contacts per positive reply" (V3 Phase 2). */
+  periodContacts: number
 }
 
 export interface DailySendDataPoint {
@@ -417,6 +420,36 @@ export const getGlobalKPIs = cache(async (days: number = 1): Promise<GlobalKPIs>
     latestSnapshotDate,
   }
 })
+
+/**
+ * Distinct people emailed per client over the selected range (V3 Phase 2,
+ * B1/C1). Backed by the cockpit_contacts_emailed RPC — a true COUNT(DISTINCT
+ * lead) over sp_send_events, because summing a daily view would double-count
+ * anyone who got a follow-up (the exact gap "contacts per positive reply"
+ * measures). Bounded to the same [cutoff, anchor] business-day window the
+ * emails/positives KPIs use, so the ratio's numerator and denominator align.
+ */
+export const getContactsEmailed = cache(
+  async (days: number = 1): Promise<Map<string, number>> => {
+    const supabase = createServerClient()
+    const activeSlugs = await getActiveClients()
+    const { cutoff, anchor } = await rangeWindow(days)
+
+    const { data, error } = await supabase.rpc("cockpit_contacts_emailed", {
+      p_start: cutoff,
+      p_end: anchor ?? cutoff,
+    })
+
+    const byClient = new Map<string, number>()
+    if (error || !data) return byClient
+    for (const r of data as { client: string; contacts_emailed: number }[]) {
+      if (activeSlugs.includes(r.client)) {
+        byClient.set(r.client, Number(r.contacts_emailed) || 0)
+      }
+    }
+    return byClient
+  }
+)
 
 export const getClientSummaries = cache(
   async (days: number = 1): Promise<ClientSummary[]> => {
@@ -518,6 +551,11 @@ export const getClientSummaries = cache(
       }
     }
 
+    // Distinct contacts emailed per client in the range (V3 Phase 2 B1/C1).
+    // cache()'d + request-deduped, so the Command Center's separate call
+    // reuses this same result.
+    const contactsByClient = await getContactsEmailed(days)
+
     const snapshotFor = (slug: string, config: ClientConfig | null) =>
       buildSnapshot({
         slug,
@@ -556,6 +594,7 @@ export const getClientSummaries = cache(
         periodTarget: periodTargetFor(config),
         periodReplies: periodRepliesByClient.get(config.client) ?? 0,
         periodPositives: periodPositivesByClient.get(config.client) ?? 0,
+        periodContacts: contactsByClient.get(config.client) ?? 0,
       })
     }
 
@@ -607,6 +646,10 @@ export const getClientSummaries = cache(
         ),
         periodPositives: childConfigs.reduce(
           (sum, c) => sum + (periodPositivesByClient.get(c.client) ?? 0),
+          0
+        ),
+        periodContacts: childConfigs.reduce(
+          (sum, c) => sum + (contactsByClient.get(c.client) ?? 0),
           0
         ),
       })
