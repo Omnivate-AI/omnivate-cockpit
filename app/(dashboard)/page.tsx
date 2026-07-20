@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { Mail, MessageSquare, MessageCircle, Percent, Send, Users } from "lucide-react"
+import { Mail, MessageSquare, MessageCircle, Percent, Users } from "lucide-react"
 import { getGlobalKPIs, getClientSummaries } from "@/lib/queries/analytics"
 import { getPortfolioHealth } from "@/lib/queries/portfolio"
 import { PortfolioHealthStrip } from "@/components/dashboard/portfolio-health-strip"
@@ -76,12 +76,11 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
   const replyRateLabel =
     days === 1 ? `Reply Rate (${anchorLabel})` : `Reply Rate (${rangeLabel})`
 
-  // Two efficiency KPIs (V3 Phase 2 B1): how many emails, and how many distinct
-  // people, to earn one positive reply — over the selected range. periodContacts
-  // is the distinct-contacts RPC summed across clients; null-guard on 0 positives.
+  // Efficiency KPI (V3 Phase 2 B1): how many distinct people to earn one
+  // positive reply, over the selected range. periodContacts is the
+  // distinct-contacts RPC summed across clients; null-guard on 0 positives.
+  // (Emails-per-positive dropped 2026-07-20 — ≈ inverse of the reply rate.)
   const totalContacts = summaries.reduce((sum, s) => sum + (s.periodContacts ?? 0), 0)
-  const emailsPerPositive =
-    kpis.positiveReplies > 0 ? kpis.emailsSentYesterday / kpis.positiveReplies : null
   const contactsPerPositive =
     kpis.positiveReplies > 0 ? totalContacts / kpis.positiveReplies : null
   const fmtEff = (v: number | null) => (v == null ? "—" : Math.round(v).toLocaleString())
@@ -153,15 +152,10 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
                 />
               </div>
 
-              {/* Efficiency row (V3 Phase 2 B1) — the two "cost per positive
-                  reply" metrics Omar asked for, across all clients, range-scoped. */}
+              {/* Efficiency card (V3 Phase 2 B1) — how many people to earn one
+                  positive reply, range-scoped. (Emails-per-positive dropped
+                  2026-07-20 — near-redundant with the reply rate above.) */}
               <div className="mt-4 grid gap-4 grid-cols-1 sm:grid-cols-2">
-                <MetricCard
-                  title="Emails per Positive Reply"
-                  value={fmtEff(emailsPerPositive)}
-                  icon={Send}
-                  subtitle={`Emails sent ÷ positive reply · ${windowLabel}`}
-                />
                 <MetricCard
                   title="Contacts per Positive Reply"
                   value={fmtEff(contactsPerPositive)}

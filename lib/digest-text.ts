@@ -22,8 +22,6 @@ export interface DigestTextInput {
   totalPositive: number
   totalReplies: number
   overallReplyRate: number
-  /** Emails sent ÷ positive replies for the range; null when 0 positives. */
-  emailsPerPositive: number | null
   /** Distinct contacts ÷ positive replies for the range; null when 0. */
   contactsPerPositive: number | null
   clients: DigestClientLine[]
@@ -44,7 +42,6 @@ export function buildDigestSummaryText(d: DigestTextInput): string {
   lines.push(`  Positive Replies: ${d.totalPositive.toLocaleString()} (Interested + human-action-required)`)
   lines.push(`  Total Replies: ${d.totalReplies.toLocaleString()}`)
   lines.push(`  Overall Reply Rate: ${pct(d.overallReplyRate)}`)
-  lines.push(`  Emails per Positive Reply: ${eff(d.emailsPerPositive)}`)
   lines.push(`  Contacts per Positive Reply: ${eff(d.contactsPerPositive)}`)
   lines.push("")
   lines.push("PER CLIENT")
