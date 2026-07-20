@@ -26,7 +26,7 @@ The V2 rebuild landed, and this pass is about **precision and trust**. Four them
 | 4 | Provider Performance + Ready Bank data truth | E4, F1–F4 | 1–2 sessions | 🟡 E4/F1/F2/F3 done (DB fixes verified) — `docs/V3-PHASE4-DATA-TRUTH.md`; **F4 diagnosed + deferred** (needs Omar's "Converted" semantic); not yet pushed |
 | 5 | Campaigns default state · domain-health chart · placement validity · blacklist reconciliation | G1, H1, H3 | 1 session | ✅ Done — `docs/V3-PHASE5-CAMPAIGNS-MAILBOXES-BLACKLIST.md` (blacklist DB fix verified: 36/33 → 0 confirmed; build green; not yet pushed) |
 | 6 | At-risk / blacklisted / burnt action loop | I1, I2 | 1 session | 🟢 Cockpit surface done ("Needs Action Today") — `docs/V3-PHASE6-NEEDS-ACTION.md`; Option A built, agent auto-propose (B) = email-infra follow-up; not yet pushed |
-| 7 | Final QA + Loom | — | 1 session | ☐ Not started |
+| 7 | Final QA + Loom | — | 1 session | 🟢 Phases 1–6 committed (`b4f44b9`) + pushed to main → deployed; QA summary + Loom script in `docs/V3-PHASE7-QA-LOOM.md`; Loom recording + live sign-off = Omar |
 
 **Schedule at sprint pace:** Day 1 → Phases 1 + 2 · Day 2 → Phase 3 + start Phase 4 · Day 3 → finish 4 + Phase 5 + Phase 7 QA/Loom. Phase 6 runs separately once its approach is decided. Roughly three working days for the cockpit fixes.
 
