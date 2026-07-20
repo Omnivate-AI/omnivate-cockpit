@@ -4,34 +4,36 @@ import { DataAsOf } from "@/components/shared/data-as-of"
 import type { ReadyBankRow } from "@/lib/queries/ready-bank"
 
 /**
- * Ready Bank (Omar 2026-07-06; per-client truth pass V2 Phase 6) — the
- * questions he actually asked: reachable TAM → verified emails →
- * (emailed | still available) and LinkedIn-only, with AVAILABLE as the
- * hero. Every number carries its own explanation, and the ⓘ block spells
- * out what each line means FOR THIS CLIENT and where it comes from:
+ * Ready Bank (Omar 2026-07-06; per-client truth pass V2 Phase 6; Universal
+ * Lead Ledger re-point 2026-07-20) — the questions he actually asked:
+ * reachable TAM → verified emails → (emailed | still available) and
+ * LinkedIn-only, with AVAILABLE as the hero. Every number now comes from
+ * the SAME standard ledger columns on every client (email_sendable,
+ * outreach_status — knowledge/system-rules/lead-table-qualification-schema.md
+ * § "The Universal Lead Ledger" in the omnivate repo):
  *
- *   - "Emailed" reads the live actually-emailed truth (Smartlead send
- *     events ∪ repliers ∪ the historical floor), NOT the uploaded flag —
- *     which overstated by 3.7k-6k leads on every client.
- *   - "Qualified" renders "Not tracked" when the client's table has no
- *     populated qualification verdict (omnivate: no column; paycaptain:
- *     never ran) instead of implying zero or near-zero.
- *   - "Available" is conservative: never emailed AND not uploaded anywhere.
+ *   - "Emailed" = ledger outreach_status IN ('emailed','replied'), NOT the
+ *     deprecated uploaded flag — which overstated by 3.7k-6k leads on every
+ *     client.
+ *   - "Qualified" renders "Not tracked" under a uniform data rule (<1% of
+ *     the TAM judged) instead of implying zero or near-zero.
+ *   - "Available" is conservative: email_sendable AND outreach_status='none'
+ *     (never emailed AND never uploaded).
  *
- * Per-client definitions + the schema-gap list: docs/V2-PHASE6-READY-BANK-GAPS.md.
+ * Definitions + reconcile evidence: docs/V3-LEDGER-REPOINT.md.
  */
 
 // What "Qualified" means per client — shown in the ⓘ block. Parent groups
 // and unknown slugs fall back to the generic line.
 const QUALIFIED_NOTES: Record<string, string> = {
   cylindo:
-    "Qualified = AI qualification verdicts on the fit-gated TAM (~22k of ~45k still undecided — being worked through).",
+    "Qualified = AI qualification verdicts on the fit-gated TAM (~22k qualified of ~45k — the rest still undecided, being worked through).",
   acceleration_partners:
-    "Qualified = AI qualification verdicts (~11k of ~66k still undecided).",
+    "Qualified = AI qualification verdicts (~54k qualified of ~66k; ~11k still undecided).",
   paycaptain:
     "Not tracked — a qualification pass never ran on this table (0.2% of rows have a verdict). List-building gated on title + verification instead.",
   omnivate:
-    "Not tracked — this table has no qualification verdict column; leads qualify via title + verification gates.",
+    "Not tracked — this table doesn't carry the ledger's qualification verdict column yet (upstream gap flagged 2026-07-20); leads qualify via title + verification gates.",
 }
 
 export function ReadyBankCard({ data }: { data: ReadyBankRow | null }) {
@@ -174,7 +176,7 @@ export function ReadyBankCard({ data }: { data: ReadyBankRow | null }) {
           <ReadyBankStat
             value={data.email_verified}
             label="Verified email"
-            hint="Email verified as working (qualified or not)"
+            hint="Working email we can send to — verified, incl. safe catch-all"
           />
           <ReadyBankStat
             value={data.linkedin_only}
@@ -184,7 +186,7 @@ export function ReadyBankCard({ data }: { data: ReadyBankRow | null }) {
           <ReadyBankStat
             value={data.in_campaign}
             label="Emailed"
-            hint="Actually emailed at least once (live Smartlead truth)"
+            hint="Actually emailed at least once (Smartlead-synced truth)"
           />
         </div>
 
@@ -206,14 +208,16 @@ export function ReadyBankCard({ data }: { data: ReadyBankRow | null }) {
               </li>
             )}
             <li>
-              <span className="font-medium text-foreground">Emailed</span> — live truth from
-              Smartlead send events + repliers + the pre-tracking historical floor. Not the
-              upload flag: uploads overstate contact by thousands per client.
+              <span className="font-medium text-foreground">Emailed</span> — the lead ledger&apos;s
+              outreach status (emailed/replied), refreshed every morning from Smartlead send
+              events + repliers + the pre-tracking historical floor. Not the upload flag:
+              uploads overstate contact by thousands per client.
             </li>
             <li>
               <span className="font-medium text-foreground">Available</span> — verified email,
-              never emailed, not uploaded anywhere. Uploaded-but-never-emailed leads (amber in
-              the bar) are queued or stale uploads — recycling them is an ops decision.
+              never emailed, never uploaded (ledger status &quot;none&quot;).
+              Uploaded-but-never-emailed leads (amber in the bar) are queued or stale uploads —
+              recycling them is an ops decision.
             </li>
           </ul>
         </details>

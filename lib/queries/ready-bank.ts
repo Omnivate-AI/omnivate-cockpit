@@ -2,34 +2,44 @@ import { cache } from "react"
 import { createServerClient } from "@/lib/supabase/server"
 import { resolveClientSlugs } from "@/lib/queries/clients"
 
-// Ready Bank (Omar 2026-07-06; per-client truth pass V2 Phase 6) — the
-// per-client lead fuel tank. Counts are materialized daily into
-// cockpit_ready_bank_daily by fn_cockpit_snapshot_ready_bank (migration
-// 010/016/018; pg_cron 09:12 UTC) from the per-client v_{slug}_tam views
-// JOINed to v_{slug}_actually_emailed — those scan 45k-260k lead rows,
-// far too heavy per request. Accuracy bar is "last 24h".
-// Per-client line definitions + gaps: docs/V2-PHASE6-READY-BANK-GAPS.md.
+// Ready Bank (Omar 2026-07-06; per-client truth pass V2 Phase 6; Universal
+// Lead Ledger re-point 2026-07-20, ClickUp 869e3knmx) — the per-client lead
+// fuel tank. Counts are materialized daily into cockpit_ready_bank_daily by
+// fn_cockpit_snapshot_ready_bank (migration 025; pg_cron 09:12 UTC) from
+// v_{slug}_tam (TAM membership) JOINed to the {slug}_leads ledger columns
+// (email_sendable / outreach_status) — those scan 45k-260k lead rows, far
+// too heavy per request. Accuracy bar is "last 24h": the ledger itself is
+// refreshed by the smartlead-perf back-sync each morning (~07:43), before
+// the 09:12 snapshot. Definitions doc: docs/V3-LEDGER-REPOINT.md.
 
 export interface ReadyBankRow {
   client: string
   snapshot_date: string
   qualified_total: number // TAM universe (reachability-gated; Cylindo also fit-gated) — UI: "Total reachable"
-  /** qualification_decision='qualified' count — NULL = NOT TRACKED for this
-      client (omnivate: no column; paycaptain: never populated, 0.2%).
-      Migration 018 replaced the fake 0 / the card's client-side 5% guess. */
+  /** qualification_decision='qualified' count — NULL = NOT TRACKED. Uniform
+      data-driven rule since migration 025: NULL when <1% of the client's TAM
+      has been judged (paycaptain: 0.2% judged; omnivate: column missing —
+      upstream ledger gap). Migration 018 replaced the fake 0 / the card's
+      client-side 5% guess. */
   qualified: number | null
-  /** qualified AND email-verified — "qualified leads we can actually email"
+  /** qualified AND email_sendable — "qualified leads we can actually email"
       (V3 Phase 4 F1/F3). NULL when qualification isn't tracked for the client. */
   qualified_email_verified: number | null
+  /** Ledger email_sendable = true (email_status verified or
+      catch_all_verified) — NOT the deprecated verified_email/email_verified
+      per-client columns. */
   email_verified: number
+  /** Ledger: NOT email_sendable AND linkedin_url present. */
   linkedin_only: number
-  /** TAM leads actually EMAILED at least once — live v_{slug}_actually_emailed
-      truth (sp_send_events ∪ repliers ∪ historical floor), NOT the drifting
-      smartlead_uploaded flag (which overstated by 3.7k-6k per client). */
+  /** TAM leads actually EMAILED at least once — ledger outreach_status IN
+      ('emailed','replied'), back-synced daily from sp_send_events ∪ repliers
+      ∪ historical floor. NOT the drifting smartlead_uploaded flag (which
+      overstated by 3.7k-6k per client). */
   in_campaign: number
-  /** Conservative: verified email AND never emailed AND not uploaded
-      anywhere. Uploaded-but-never-emailed leads are deliberately excluded
-      (queued or dead uploads — surfaced in the gap doc, not counted here). */
+  /** Conservative: email_sendable AND outreach_status='none' — verified,
+      never emailed AND never uploaded. Uploaded-but-never-emailed leads are
+      deliberately excluded (queued or dead uploads — surfaced in the gap
+      doc, not counted here). */
   available_email: number
 }
 
