@@ -13,7 +13,7 @@ export type { RangeValue } from "@/lib/range-utils"
  * RangeTransitionProvider (V2 Phase 4) — the click responds the same frame
  * instead of after the server round-trip (measured 1.5-1.8s before).
  */
-export function TimeRangeFilter() {
+export function TimeRangeFilter({ oneDayLabel }: { oneDayLabel?: string } = {}) {
   const { displayRange, navigate } = useRangeTransition()
 
   return (
@@ -30,7 +30,9 @@ export function TimeRangeFilter() {
               : "text-muted-foreground hover:text-foreground"
           )}
         >
-          {r.label}
+          {/* The single-day button shows the actual business day (e.g. "Friday"
+              on a Monday) instead of a misleading "Yesterday" — Omar 2026-07-20 */}
+          {r.value === "1d" && oneDayLabel ? oneDayLabel : r.label}
         </button>
       ))}
     </div>

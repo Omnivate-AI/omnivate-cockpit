@@ -42,4 +42,11 @@ test("Command Center 'Yesterday' anchors on a business day, not a weekend", asyn
       `"Data as of" landed on ${asOf[1]} — should match the business-day KPI anchor`
     ).toBe(false)
   }
+
+  // The 1-day range toggle shows the actual weekday (e.g. "Friday"), never the
+  // generic "Yesterday" (Omar 2026-07-20).
+  await expect(page.getByRole("button", { name: "Yesterday" })).toHaveCount(0)
+
+  // The "Needs Action Today" panel was removed from the Command Center.
+  await expect(page.getByText("Needs Action Today")).toHaveCount(0)
 })

@@ -1,7 +1,9 @@
 # V3 Phase 6 — At-risk / burnt action loop (I1, I2)
 
-**Status:** cockpit surface code complete · DB fix applied + verified · build green · **not yet pushed**
+**Status:** shipped, then **removed from the Command Center per Omar (2026-07-20)** — see note below. DB fix (portfolio `burnt_mailboxes`) stays.
 **Scope decision:** built **Option A / the cockpit human-gate half of C** (see below). Agent auto-propose (Option B) is an email-infra plugin follow-up.
+
+> **Update 2026-07-20:** Omar asked to remove the amber "Needs Action Today" banner from the Command Center. The panel render + import were removed from `app/(dashboard)/page.tsx` (the `needs-action-panel.tsx` component is left in place, unused, in case Option B reuses it). At-risk/burnt still surface on each client's summary card (infra line) and the Mailboxes tab.
 
 ---
 

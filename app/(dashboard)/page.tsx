@@ -8,7 +8,6 @@ import { getRecentSpamRisks } from "@/lib/queries/campaigns"
 import { replyRateColor } from "@/lib/design-tokens"
 import { MetricCard } from "@/components/shared/metric-card"
 import { ClientSummaryGrid } from "@/components/dashboard/client-summary-grid"
-import { NeedsActionPanel } from "@/components/dashboard/needs-action-panel"
 import { DailySummary } from "@/components/dashboard/daily-summary"
 import { SpamRiskBanner } from "@/components/dashboard/spam-risk-banner"
 import { SectionFreshness } from "@/components/shared/section-freshness"
@@ -52,19 +51,26 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
   )
 
   const replyRateColors = replyRateColor(kpis.overallReplyRate)
-  const rangeLabel = RANGE_LABELS[rangeKey] ?? `${days}d`
-  // days=1 = the latest BUSINESS day with facts (RC-3: facts are weekday-only,
-  // so "Yesterday" on a Sun/Mon used to read all zeros) — label it with the
-  // actual date so Monday honestly says "Fri, Jul 10" instead of claiming
-  // yesterday.
-  const anchorLabel = kpis.latestSnapshotDate
-    ? new Date(`${kpis.latestSnapshotDate}T00:00:00Z`).toLocaleDateString("en-GB", {
+  // days=1 = the latest BUSINESS day (weekend-skipping anchor). Label the
+  // single-day view with the ACTUAL day — the date on the KPI cards, the
+  // weekday NAME on the range toggle + range label — so it reads "Friday", not
+  // a misleading "Yesterday", when the data is really Friday's (Omar 2026-07-20).
+  const anchorDate = kpis.latestSnapshotDate
+    ? new Date(`${kpis.latestSnapshotDate}T00:00:00Z`)
+    : null
+  const anchorLabel = anchorDate
+    ? anchorDate.toLocaleDateString("en-GB", {
         weekday: "short",
         day: "numeric",
         month: "short",
         timeZone: "UTC",
       })
     : "Yesterday"
+  const anchorWeekday = anchorDate
+    ? anchorDate.toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" })
+    : "Yesterday"
+  const rangeLabel =
+    days === 1 ? anchorWeekday : RANGE_LABELS[rangeKey] ?? `${days}d`
   const emailsSentLabel =
     days === 1 ? `Emails Sent (${anchorLabel})` : `Emails Sent (${rangeLabel})`
   const replyRateLabel =
@@ -98,7 +104,7 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
               </p>
               <SectionFreshness live synced className="mt-1.5" />
             </div>
-            <TimeRangeFilter />
+            <TimeRangeFilter oneDayLabel={anchorWeekday} />
           </div>
 
           {/* Active-alerts banner removed from the Command Center per Omar
@@ -108,10 +114,9 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
           {/* Spam Risk Banner — only renders when recent spam issues exist */}
           <SpamRiskBanner risks={spamRisks} />
 
-          {/* Needs Action Today (V3 Phase 6) — cross-client at-risk / burnt /
-              confirmed-blacklisted mailboxes, front-and-center so nothing sits
-              undealt-with. Links to each client's Mailboxes tab to act. */}
-          <NeedsActionPanel rows={portfolio} />
+          {/* "Needs Action Today" panel removed from the Command Center per Omar
+              (2026-07-20). At-risk/burnt still surface on each client's card
+              (infra line) + the Mailboxes tab. */}
 
           {/* KPI Cards with gradient background — range-scoped, veiled while switching */}
           <RangeVeil>
