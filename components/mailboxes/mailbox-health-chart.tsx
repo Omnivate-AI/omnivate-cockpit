@@ -1,8 +1,8 @@
 "use client"
 
 import {
-  Line,
-  LineChart,
+  Area,
+  AreaChart,
   XAxis,
   YAxis,
   Tooltip,
@@ -20,12 +20,11 @@ interface MailboxHealthChartProps {
 const BURN_THRESHOLD = 97
 
 /**
- * V2 Phase 7 — Domain Health as a WORST/AT-RISK band, not a flat pool
- * average. Plots the weakest domain (min) and the p25→median band each day,
- * plus an at-risk-domain count on a secondary axis. A healthy pool no longer
- * draws an uninformative flat-100 line: it shows an explicit "all healthy"
- * banner, and the moment one box burns the worst line dives below the 97 mark
- * (the pool average would have hidden it — measured AP avg 99.2 with a 0.0 box).
+ * Domain Health — the WEAKEST domain each day (not a pool average that hides a
+ * dead box) as a colour-descriptive area: green at/above the 97 burn line,
+ * red below. A healthy pool draws a green shape pinned near 100 + an explicit
+ * "all healthy" banner; the moment one box burns the area dives red below 97.
+ * (V2 Phase 7 origin; simplified V3 H1; made colour-descriptive 2026-07-20.)
  */
 export function MailboxHealthChart({ data }: MailboxHealthChartProps) {
   const { points, allHealthy } = data
@@ -41,6 +40,14 @@ export function MailboxHealthChart({ data }: MailboxHealthChartProps) {
   const latest = points[points.length - 1]
   const worstNow = latest?.worst ?? 100
   const atRiskNow = latest?.atRisk ?? 0
+
+  // Y-axis floor + the fraction of the axis height sitting AT/ABOVE the 97 burn
+  // line. The area (stroke + fill) is green in that top band and red below, so
+  // "healthy" reads as a green shape at a glance and a dip literally goes red
+  // (Omar 2026-07-20). yMin <= 97 always, so the divisor is never zero.
+  const dataMin = Math.min(...points.map((p) => p.worst))
+  const yMin = Math.max(0, Math.floor(dataMin - 3))
+  const greenOffset = Math.min(1, Math.max(0, (100 - BURN_THRESHOLD) / (100 - yMin)))
 
   return (
     <div className="space-y-2">
@@ -71,13 +78,29 @@ export function MailboxHealthChart({ data }: MailboxHealthChartProps) {
         </div>
       )}
 
-      {/* Simplified per Omar V3 H1: just the weakest domain vs the 97 burn
-          line — the dual-axis median/p25/at-risk-bar version was unreadable.
-          The at-risk count still shows in the summary line above + the
-          hovercard; the chart itself now says ONE thing clearly. */}
+      {/* Weakest domain each day as a filled area whose colour is driven by the
+          97 burn line: green at/above it (healthy), red below (needs attention).
+          Simplified from the old dual-axis version (unreadable — Omar V3 H1);
+          made colour-descriptive per Omar 2026-07-20. Median + at-risk detail
+          live in the hovercard. */}
       <div className="h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={points} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+          <AreaChart data={points} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+            <defs>
+              {/* Vertical gradient: green above the 97 line, red below */}
+              <linearGradient id="domainHealthStroke" x1="0" y1="0" x2="0" y2="1">
+                <stop offset={0} stopColor="#10b981" />
+                <stop offset={greenOffset} stopColor="#10b981" />
+                <stop offset={greenOffset} stopColor="#ef4444" />
+                <stop offset={1} stopColor="#ef4444" />
+              </linearGradient>
+              <linearGradient id="domainHealthFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset={0} stopColor="#10b981" stopOpacity={0.3} />
+                <stop offset={greenOffset} stopColor="#10b981" stopOpacity={0.1} />
+                <stop offset={greenOffset} stopColor="#ef4444" stopOpacity={0.2} />
+                <stop offset={1} stopColor="#ef4444" stopOpacity={0.05} />
+              </linearGradient>
+            </defs>
             <XAxis
               dataKey="date"
               tickFormatter={(val) => format(new Date(`${val}T00:00:00`), "MMM d")}
@@ -87,10 +110,7 @@ export function MailboxHealthChart({ data }: MailboxHealthChartProps) {
               axisLine={false}
             />
             <YAxis
-              domain={[
-                (dataMin: number) => Math.max(0, Math.floor(dataMin - 3)),
-                100,
-              ]}
+              domain={[yMin, 100]}
               tick={{ fontSize: 11 }}
               stroke="hsl(var(--muted-foreground))"
               tickLine={false}
@@ -109,23 +129,28 @@ export function MailboxHealthChart({ data }: MailboxHealthChartProps) {
                 fontSize: 10,
               }}
             />
-            <Line
+            <Area
               type="monotone"
               dataKey="worst"
               name="Weakest domain"
-              stroke="hsl(0, 72%, 51%)"
-              strokeWidth={2}
-              dot={{ r: 2 }}
+              stroke="url(#domainHealthStroke)"
+              strokeWidth={2.5}
+              fill="url(#domainHealthFill)"
+              dot={false}
               activeDot={{ r: 4 }}
               isAnimationActive={false}
             />
             <Tooltip content={<BandTooltip />} />
-          </LineChart>
+          </AreaChart>
         </ResponsiveContainer>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        The single weakest domain each day vs the 97% burn line. A healthy pool
-        keeps it pinned near the top; a dip below 97 means a domain needs attention.
+        Weakest domain each day.{" "}
+        <span className="font-medium text-emerald-600 dark:text-emerald-400">Green</span>{" "}
+        = at or above the 97% burn line (healthy); it turns{" "}
+        <span className="font-medium text-rose-600 dark:text-rose-400">red</span>{" "}
+        only if a domain dips below. Hover any day for the median + how many
+        domains are below 97.
       </p>
     </div>
   )
