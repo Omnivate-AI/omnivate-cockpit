@@ -12,9 +12,10 @@ test("overview tab renders header and KPI grid", async ({
 }) => {
   await page.goto(`/clients/${CLIENT}`)
   await expect(page.getByText("Cylindo").first()).toBeVisible()
-  // V2 Phase 3: "Positive Replies" (Interested + human_action_required,
-  // decision #1), labeled with the latest business day
-  await expect(page.getByText(/^Positive Replies \(/).first()).toBeVisible({
+  // V3 Phase 3: the duplicate all-time KPI row was removed; the range-scoped
+  // performance suite now owns positive replies. Assert the chart title
+  // ("Positive Replies — {range}"), which is unique to that suite (not the tab).
+  await expect(page.getByText(/Positive Replies —/).first()).toBeVisible({
     timeout: 60_000,
   })
   // V2 Phase 1 removals: live strip, mailbox summary KPI, pipeline runway

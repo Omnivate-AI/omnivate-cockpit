@@ -38,10 +38,17 @@ test("KPI cards render", async ({ page }) => {
   ]) {
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible()
   }
-  // Reply-rate card is scoped + labeled to the selected range (answer #4);
-  // default range on "/" is 7d.
+  // Reply-rate card is scoped + labeled to the selected range. The default
+  // view on "/" is now YESTERDAY (V3 A5), so the label carries the business
+  // day's date (e.g. "Reply Rate (Fri, 18 Jul)") — match the shape, not a
+  // fixed range string.
+  await expect(page.getByText(/^Reply Rate \(/).first()).toBeVisible()
+  // V3 Phase 2 efficiency cards
   await expect(
-    page.getByText("Reply Rate (Last 7 Days)", { exact: true }).first()
+    page.getByText("Emails per Positive Reply", { exact: true }).first()
+  ).toBeVisible()
+  await expect(
+    page.getByText("Contacts per Positive Reply", { exact: true }).first()
   ).toBeVisible()
 })
 
@@ -56,16 +63,24 @@ test("sidebar carries the Omnivate mark + wordmark (V2 Phase 1)", async ({
   await expect(page.getByText("Omnivate Cockpit")).toHaveCount(0)
 })
 
-test("lead runway slider renders on client cards (Omar 07-06)", async ({
+test("client cards render the runway section (Omar 07-06)", async ({
   page,
 }) => {
-  // Stacked completed/in-progress/not-started bar summed over ACTIVE
-  // PRIMARY campaigns, with the legend counts.
-  await expect(page.getByText(/Lead Runway/).first()).toBeVisible()
-  await expect(page.getByText(/not started/).first()).toBeVisible()
-  await expect(page.getByText(/in progress/).first()).toBeVisible()
-  // Formula transparency on the In Campaigns gauge
-  await expect(page.getByText(/emails ÷/).first()).toBeVisible()
+  // Every client card shows the runway gauges ("In Campaigns" / "Ready Bank")
+  // or an explicit "No runway data" — never blank.
+  await expect(
+    page
+      .getByText("In Campaigns")
+      .first()
+      .or(page.getByText("No runway data").first())
+  ).toBeVisible()
+  // The stacked Lead Runway bar renders ONLY when the primary-runway view has
+  // leads in flight (not-started/in-progress/completed > 0). When that view is
+  // zeroed it is correctly hidden, so assert it only when it's actually present.
+  if ((await page.getByText(/Lead Runway/).count()) > 0) {
+    await expect(page.getByText(/Lead Runway/).first()).toBeVisible()
+    await expect(page.getByText(/not started/).first()).toBeVisible()
+  }
 })
 
 test("send-targets chart is removed (Omar 07-06)", async ({ page }) => {

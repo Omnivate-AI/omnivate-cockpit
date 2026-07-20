@@ -41,7 +41,9 @@ The Interested-Leads tab's **"Converted"** column reads `cockpit_interested_lead
 - **Became interested** — the date the reply was categorised Interested; sourced from the reply / `LEAD_CATEGORY_UPDATED` event (in Supabase). Fixable: correct `cockpit_interested_leads` population to stamp the event time, not the sync time.
 - **Meeting booked** — lives in the **SDR trackers, not Supabase**. Needs a data source (tracker import / a booked field) before it can be populated; until then the column renders "—" and the gap is surfaced.
 
-**Deferred to a focused follow-up** (not in this phase): touches the `cockpit_interested_leads` population job + the interested-leads tab columns, and the "meeting booked" half needs a trackers source wired in.
+**DONE (V3 follow-up, 2026-07-20):**
+- **Became interested** — `vw_cockpit_interested_leads.date_converted` rewritten to the **first captured reply** (`min(sp_replies.received_at)`), dropping the sync-time fallback → NULL ("—") when the reply predates capture (mig `cockpit_read_models_024.sql`, applied + snapshot re-run). No more ingestion-time cluster; AP latest 07-15, Cylindo 07-17.
+- Interested-Leads tab: "Converted" → **"Became interested"** + a new **"Meeting booked"** column (renders "—" with a note — lives in the SDR trackers, not Supabase yet). Footnote explains the "—" cases.
 
 ## Files / DB
 - DB migration `db/migrations/cockpit_read_models_021.sql` — add `qualified_email_verified`, rewrite `fn_cockpit_snapshot_ready_bank` (COALESCE linkedin_only + intersection), applied live + snapshot re-run.

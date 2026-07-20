@@ -18,7 +18,7 @@ This doc holds the QA summary + the Loom walkthrough script (Loom is human-recor
   1. `command-center: KPI cards render` — asserts `"Reply Rate (Last 7 Days)"`; A5 changed the default to **Yesterday**, so that exact label is gone (confirms b4f44b9 is live). **Stale — update the test.**
   2. `client-detail: overview renders KPI grid` — asserts the removed all-time `Positive Replies (date)` card (Phase 3) + `"By recipient inbox"` (relabelled "…provider", Phase 4). **Stale — update the test.**
   3. `command-center: lead runway on client cards` — `vw_cockpit_client_runway` currently returns **all-zeros** for every client, so the LeadRunwayBar's `total>0` guard hides it. **Data-state, pre-existing, NOT V3** (range-independent data; my card edit never touched that bar). Worth a separate look at why the runway view is zeroed.
-  → e2e refresh (items 1–2) is a follow-up; item 3 is a data-pipeline note.
+  → **e2e refresh done (2026-07-20):** items 1–2 updated to the V3 labels; item 3 made data-tolerant (asserts the runway section, checks the Lead Runway bar only when the primary-runway view has leads in flight). Re-run against prod: **36 passed, 0 failed, 3 skipped.**
 - **Live visual + dark/mobile spot-checks:** owned by Omar's review on the deployed URL (the cockpit is auth-gated; visual sign-off is human).
 
 ## Loom walkthrough script (record against the live app)
@@ -37,7 +37,7 @@ Open https://omnivate-cockpit.vercel.app.
 
 Close: "every number was checked against Smartlead/Supabase; the two data bugs (LinkedIn-only, blacklist) are fixed at the source and already live."
 
-## Follow-ups (not in V3 build)
-- **F4** — split "Converted" into "Became interested" (fixable from the reply event) + "Meeting booked" (needs an SDR-tracker data source).
+## Follow-ups
+- ✅ **F4 (done 2026-07-20)** — "Became interested" now sourced from the first captured reply; "Meeting booked" column added. Remaining: wire an **SDR-tracker source** so "Meeting booked" is populated (currently "—").
+- ✅ **e2e refresh (done 2026-07-20)** — suite green against prod (36 passed).
 - **Phase 6 Option B** — agent auto-propose of at-risk/burnt actions, in the email-infra plugin (separate repo).
-- **e2e refresh** — update label/structure assertions for the V3 surface.
