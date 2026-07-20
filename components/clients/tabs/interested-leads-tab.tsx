@@ -62,12 +62,6 @@ export async function InterestedLeadsTab({ clientSlug }: InterestedLeadsTabProps
               <th className="px-4 py-3 font-medium">Contact</th>
               <th className="px-4 py-3 font-medium">Industry</th>
               <th className="px-4 py-3 font-medium whitespace-nowrap">Became interested</th>
-              <th
-                className="px-4 py-3 font-medium whitespace-nowrap"
-                title="Meeting-booked date lives in the SDR trackers, not Supabase yet"
-              >
-                Meeting booked
-              </th>
               <th className="px-4 py-3 font-medium">Links</th>
             </tr>
           </thead>
@@ -142,13 +136,6 @@ export async function InterestedLeadsTab({ clientSlug }: InterestedLeadsTabProps
                   {/* Became interested = first captured reply (V3 F4). "—" =
                       reply predates capture, so the true date isn't stored. */}
                   <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{fmtDate(l.date_converted)}</td>
-                  {/* Meeting booked — not in Supabase yet (SDR trackers) */}
-                  <td
-                    className="px-4 py-3 whitespace-nowrap text-muted-foreground"
-                    title="Not tracked in Supabase yet — booked meetings live in the SDR trackers"
-                  >
-                    —
-                  </td>
 
                   {/* Links: Smartlead conversation + lead assets (where we have them) */}
                   <td className="px-4 py-3">
@@ -195,9 +182,7 @@ export async function InterestedLeadsTab({ clientSlug }: InterestedLeadsTabProps
       <p className="text-[11px] leading-snug text-muted-foreground">
         <span className="font-medium">Became interested</span> = the lead&apos;s first captured
         reply. &quot;—&quot; means the reply predates our webhook capture, so the exact date
-        isn&apos;t stored (the lead is still real — see the conversation link).{" "}
-        <span className="font-medium">Meeting booked</span> is not tracked in Supabase yet — it
-        lives in the SDR trackers.
+        isn&apos;t stored (the lead is still real — see the conversation link).
       </p>
     </div>
   )

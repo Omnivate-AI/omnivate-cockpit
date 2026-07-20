@@ -43,7 +43,7 @@ The Interested-Leads tab's **"Converted"** column reads `cockpit_interested_lead
 
 **DONE (V3 follow-up, 2026-07-20):**
 - **Became interested** — `vw_cockpit_interested_leads.date_converted` rewritten to the **first captured reply** (`min(sp_replies.received_at)`), dropping the sync-time fallback → NULL ("—") when the reply predates capture (mig `cockpit_read_models_024.sql`, applied + snapshot re-run). No more ingestion-time cluster; AP latest 07-15, Cylindo 07-17.
-- Interested-Leads tab: "Converted" → **"Became interested"** + a new **"Meeting booked"** column (renders "—" with a note — lives in the SDR trackers, not Supabase yet). Footnote explains the "—" cases.
+- Interested-Leads tab: "Converted" → **"Became interested"**; footnote explains the "—" cases. (Meeting-booked column dropped per Amzat 2026-07-20 — not needed.)
 
 ## Files / DB
 - DB migration `db/migrations/cockpit_read_models_021.sql` — add `qualified_email_verified`, rewrite `fn_cockpit_snapshot_ready_bank` (COALESCE linkedin_only + intersection), applied live + snapshot re-run.

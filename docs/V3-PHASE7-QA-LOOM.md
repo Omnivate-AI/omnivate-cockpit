@@ -38,6 +38,6 @@ Open https://omnivate-cockpit.vercel.app.
 Close: "every number was checked against Smartlead/Supabase; the two data bugs (LinkedIn-only, blacklist) are fixed at the source and already live."
 
 ## Follow-ups
-- ✅ **F4 (done 2026-07-20)** — "Became interested" now sourced from the first captured reply; "Meeting booked" column added. Remaining: wire an **SDR-tracker source** so "Meeting booked" is populated (currently "—").
+- ✅ **F4 (done 2026-07-20)** — "Became interested" sourced from the first captured reply. (Meeting-booked column dropped per Amzat — not needed.)
 - ✅ **e2e refresh (done 2026-07-20)** — suite green against prod (36 passed).
 - **Phase 6 Option B** — agent auto-propose of at-risk/burnt actions, in the email-infra plugin (separate repo).
