@@ -8,7 +8,10 @@ import { alertSeverityColor } from "@/lib/design-tokens"
 import {
   getClientContactsByRange,
   getClientPerformanceHistory,
+  getClientProviderMatrixDaily,
   getClientProviderSplit,
+  getClientRecipientDailySeries,
+  getClientSenderDailySeries,
 } from "@/lib/queries/analytics"
 import { getClientRecipientSplit } from "@/lib/queries/portfolio"
 import { ProviderSplitCard } from "@/components/clients/provider-split-card"
@@ -43,18 +46,32 @@ export async function OverviewTab({
   // Phase 5) — the range presets + custom picker filter it client-side, so
   // switches are instant. 365 days comfortably covers "All Time" (facts
   // begin 2026-06-09) and any custom range worth charting.
-  const [topAlerts, performanceHistory, providerSplit, recipientSplit, readyBank, contactsByRange] =
-    await Promise.all([
-      getClientAlerts(clientSlug, false, 3),
-      getClientPerformanceHistory(clientSlug, 365),
-      getClientProviderSplit(clientSlug, 14),
-      getClientRecipientSplit(clientSlug, 14),
-      getClientReadyBank(clientSlug),
-      // V4 A3: distinct contacts precomputed per range preset — the two
-      // efficiency ratios need a true COUNT(DISTINCT lead), which the daily
-      // history can't provide client-side.
-      getClientContactsByRange(clientSlug, customFrom, customTo),
-    ])
+  const [
+    topAlerts,
+    performanceHistory,
+    providerSplit,
+    recipientSplit,
+    readyBank,
+    contactsByRange,
+    recipientDaily,
+    senderDaily,
+    matrixDaily,
+  ] = await Promise.all([
+    getClientAlerts(clientSlug, false, 3),
+    getClientPerformanceHistory(clientSlug, 365),
+    getClientProviderSplit(clientSlug, 14),
+    getClientRecipientSplit(clientSlug, 14),
+    getClientReadyBank(clientSlug),
+    // V4 A3: distinct contacts precomputed per range preset — the two
+    // efficiency ratios need a true COUNT(DISTINCT lead), which the daily
+    // history can't provide client-side.
+    getClientContactsByRange(clientSlug, customFrom, customTo),
+    // V4 C2-C4: provider daily series + matrix cells (era-floored; the
+    // Overview's range selection filters them client-side).
+    getClientRecipientDailySeries(clientSlug),
+    getClientSenderDailySeries(clientSlug),
+    getClientProviderMatrixDaily(clientSlug),
+  ])
 
   return (
     <div className="space-y-6">
@@ -75,10 +92,18 @@ export async function OverviewTab({
         config={config}
         customRange={customFrom ? { from: customFrom, to: customTo } : undefined}
         contactsByRange={contactsByRange}
+        recipientDaily={recipientDaily}
+        senderDaily={senderDaily}
+        matrixDaily={matrixDaily}
       />
 
       {/* Provider Performance (sender infrastructure + recipient inbox split) */}
-      <ProviderSplitCard rows={providerSplit} days={14} recipient={recipientSplit} />
+      <ProviderSplitCard
+        rows={providerSplit}
+        days={14}
+        recipient={recipientSplit}
+        windowEnd={latestSnapshot?.snapshot_date ?? null}
+      />
 
       {/* Ready Bank — the qualified-lead fuel tank (replaces the old
           lead-pipeline funnel per Omar's 07-06 review) */}

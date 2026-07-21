@@ -32,8 +32,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { MetricCard, type MetricCardTrend } from "@/components/shared/metric-card"
 import { DateRangePicker } from "@/components/clients/date-range-picker"
 import { getTargetForDate, type ClientConfig, type DailyTargets } from "@/types/analytics"
-import type { ClientContactsByRange, PerformanceHistoryPoint } from "@/lib/queries/analytics"
+import type {
+  ClientContactsByRange,
+  PerformanceHistoryPoint,
+  ProviderMatrixDay,
+  RecipientDailyPoint,
+  SenderDailyPoint,
+} from "@/lib/queries/analytics"
 import { formatRatio } from "@/lib/format"
+import {
+  isWeekend,
+  weekendSpans,
+  MIN_SENDS_FOR_RATE,
+  SEND_CAPTURE_ERA_START,
+  fromRecipientDaily,
+  fromSenderDaily,
+} from "@/lib/chart-utils"
+import {
+  ProviderMatrixCard,
+  ProviderReplyRateChart,
+} from "@/components/clients/provider-insights"
 
 /**
  * V2 Phase 5 — the client Overview performance suite (Omar's 07-13 graph
@@ -66,6 +84,11 @@ interface OverviewPerformanceProps {
   /** V4 A3 — distinct contacts precomputed server-side per range preset
       (a COUNT(DISTINCT lead) can't be derived from the daily history). */
   contactsByRange?: ClientContactsByRange
+  /** V4 C2/C3/C4 — provider daily series + matrix cells (era-floored server
+      fetches; the active range filters them client-side like everything else). */
+  recipientDaily?: RecipientDailyPoint[]
+  senderDaily?: SenderDailyPoint[]
+  matrixDaily?: ProviderMatrixDay[]
 }
 
 const RANGES: { key: Exclude<TimeRange, "custom">; label: string }[] = [
@@ -81,12 +104,6 @@ const TARGET_STROKE = "#f59e0b" // amber target line
 const RATE_STROKE = "#10b981" // emerald rate line
 const POSITIVE_FILL = "#10b981" // emerald positive bars
 const WEEKEND_BAND = "#94a3b8" // slate — weekend background band (E2)
-
-// E3: a day with almost no sends but a stray reply (a weekend response-agent
-// reply, a straggler) produces a meaningless 30-60% reply rate that blows out
-// the whole trend's Y-axis. Below this send floor the day's rate is treated as
-// "no meaningful rate" (null) and bridged, instead of drawn as a spike.
-const MIN_SENDS_FOR_RATE = 20
 
 function windowFor(
   range: TimeRange,
@@ -140,11 +157,6 @@ function computeTrend(current: number, previous: number): MetricCardTrend | unde
   }
 }
 
-function isWeekend(dateStr: string): boolean {
-  const day = new Date(`${dateStr}T00:00:00`).getDay()
-  return day === 0 || day === 6
-}
-
 /**
  * Fill the series to CONTINUOUS calendar days between the first and last point
  * (facts skip days with no activity — mostly weekends). Missing days become
@@ -168,30 +180,14 @@ function fillDaily(points: PerformanceHistoryPoint[]): PerformanceHistoryPoint[]
   return out
 }
 
-/** Contiguous weekend runs (e.g. Sat→Sun) as [x1,x2] category spans for the
-    background ReferenceArea bands (E2). */
-function weekendSpans(dates: string[]): { x1: string; x2: string }[] {
-  const spans: { x1: string; x2: string }[] = []
-  let start: string | null = null
-  let prev: string | null = null
-  for (const d of dates) {
-    if (isWeekend(d)) {
-      if (start == null) start = d
-      prev = d
-    } else if (start != null && prev != null) {
-      spans.push({ x1: start, x2: prev })
-      start = prev = null
-    }
-  }
-  if (start != null && prev != null) spans.push({ x1: start, x2: prev })
-  return spans
-}
-
 export function OverviewPerformance({
   history,
   config,
   customRange,
   contactsByRange,
+  recipientDaily,
+  senderDaily,
+  matrixDaily,
 }: OverviewPerformanceProps) {
   const [range, setRange] = useState<TimeRange>(customRange ? "custom" : "week")
 
@@ -237,6 +233,21 @@ export function OverviewPerformance({
     const weekends = weekendSpans(filled.map((p) => p.date))
     return { points, prevPoints, chartData, weekends }
   }, [history, range, customRange, baseTarget, targets])
+
+  // V4 C2-C4: the provider series follow the SAME active window as everything
+  // else on this page (C1 — one range, stated once, no more guessing).
+  const provider = useMemo(() => {
+    const { start, end } = windowFor(range, customRange)
+    const inWin = (dateStr: string) => {
+      const d = new Date(`${dateStr}T00:00:00`)
+      return d >= start && d < end
+    }
+    return {
+      recipient: fromRecipientDaily((recipientDaily ?? []).filter((p) => inWin(p.date))),
+      sender: fromSenderDaily((senderDaily ?? []).filter((p) => inWin(p.date))),
+      matrix: (matrixDaily ?? []).filter((c) => inWin(c.day)),
+    }
+  }, [recipientDaily, senderDaily, matrixDaily, range, customRange])
 
   const current = sumPoints(points)
   const previous = range !== "all" ? sumPoints(prevPoints) : null
@@ -594,6 +605,40 @@ export function OverviewPerformance({
           </p>
         </CardContent>
       </Card>
+
+      {/* V4 C2 — reply rate INTO each recipient inbox provider (the split
+          Omar was reading when he spotted Microsoft ≈ nothing vs Google). */}
+      {recipientDaily && (
+        <ProviderReplyRateChart
+          points={provider.recipient}
+          title="Reply Rate by Recipient Provider"
+          sideNote="Recipient side — the inboxes we send INTO, classified by live MX records"
+          rangeLabel={rangeLabel}
+          windowNote={`data from ${format(
+            new Date(`${SEND_CAPTURE_ERA_START}T00:00:00`),
+            "d MMM yyyy"
+          )} (send-event capture)`}
+        />
+      )}
+
+      {/* V4 C3 — the same chart keyed by the SENDING mailbox pool. */}
+      {senderDaily && (
+        <ProviderReplyRateChart
+          points={provider.sender}
+          title="Reply Rate by Sender Mailbox Provider"
+          sideNote="Sender side — OUR mailbox pools (Google / Microsoft / Other-SMTP)"
+          rangeLabel={rangeLabel}
+        />
+      )}
+
+      {/* V4 C4 — the 3×3 sender × recipient matrix. */}
+      {matrixDaily && (
+        <ProviderMatrixCard
+          cells={provider.matrix}
+          rangeLabel={rangeLabel}
+          eraStart={SEND_CAPTURE_ERA_START}
+        />
+      )}
     </div>
   )
 }

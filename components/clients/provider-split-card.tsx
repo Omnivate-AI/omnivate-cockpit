@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Server, AlertTriangle } from "lucide-react"
+import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { replyRateColor } from "@/lib/design-tokens"
 import type { ProviderSplitRow } from "@/lib/queries/analytics"
@@ -26,6 +27,9 @@ interface ProviderSplitCardProps {
    *  live event capture × MX cache). The deliverability tell: sends INTO a
    *  provider with no replies back suggests the spam folder. */
   recipient?: RecipientProviderRow[]
+  /** Last day the window covers (the facts anchor) — printed so the range is
+      stated, not guessed (V4 C1: "what range is this — this week? last week?"). */
+  windowEnd?: string | null
 }
 
 /**
@@ -34,8 +38,11 @@ interface ProviderSplitCardProps {
  * detector: a provider with pool share but no sends, or recipient sends
  * with a collapsed reply rate, stands out immediately.
  */
-export function ProviderSplitCard({ rows, days, recipient }: ProviderSplitCardProps) {
+export function ProviderSplitCard({ rows, days, recipient, windowEnd }: ProviderSplitCardProps) {
   const totalSent = rows.reduce((s, r) => s + r.sent, 0)
+  const windowEndLabel = windowEnd
+    ? format(new Date(`${windowEnd}T00:00:00`), "EEE d MMM")
+    : null
 
   return (
     <Card>
@@ -43,6 +50,7 @@ export function ProviderSplitCard({ rows, days, recipient }: ProviderSplitCardPr
         <CardTitle className="text-base font-medium flex items-center gap-2">
           <Server className="h-4 w-4 text-muted-foreground" />
           Provider Performance — Last {days} Days
+          {windowEndLabel ? ` ending ${windowEndLabel}` : ""}
         </CardTitle>
         <p className="text-xs text-muted-foreground">
           By sender mailbox provider

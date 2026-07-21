@@ -5,6 +5,12 @@ import { getReadyBankBySlug, type ReadyBankRow } from "@/lib/queries/ready-bank"
 import type { ClientConfig, ClientSnapshot, DailyTargets } from "@/types/analytics"
 import { getTargetForDate } from "@/types/analytics"
 import { toBusinessDay } from "@/lib/range-utils"
+import { SEND_CAPTURE_ERA_START } from "@/lib/chart-utils"
+import type {
+  ProviderMatrixDay,
+  RecipientDailyPoint,
+  SenderDailyPoint,
+} from "@/lib/chart-utils"
 
 // Performance reads come from the sp_* read-models:
 //   vw_cockpit_daily_client_perf  — per-client daily sends/replies/positive (from sp_daily_campaign_facts)
@@ -459,9 +465,9 @@ export const getContactsEmailed = cache(
   }
 )
 
-/** The day the send-events webhook capture began — the earliest date any
-    distinct-contacts (and provider-matrix) number can honestly cover. */
-export const SEND_CAPTURE_ERA_START = "2026-06-03"
+/** The day the send-events webhook capture began (canonical value lives in
+    the plain chart-utils module so client components can import it safely). */
+export { SEND_CAPTURE_ERA_START }
 
 /** Distinct contacts for ONE client (children summed for parent slugs) over an
     explicit [start, end] date window — cockpit_contacts_emailed RPC. */
@@ -530,6 +536,194 @@ export const getClientContactsByRange = cache(
     ])
 
     return { week, month, all, custom, eraStart: SEND_CAPTURE_ERA_START }
+  }
+)
+
+// --- V4 C2/C3/C4 — provider reply-rate series + sender×recipient matrix ---
+// Shapes live in lib/chart-utils (plain module) so client components can use
+// them; re-exported here so query-layer consumers keep one import path.
+export type { RecipientDailyPoint, SenderDailyPoint, ProviderMatrixDay }
+
+async function recipientDailyForSlugs(
+  slugs: string[],
+  since: string,
+  until?: string | null
+): Promise<RecipientDailyPoint[]> {
+  const supabase = createServerClient()
+  let query = supabase
+    .from("vw_cockpit_recipient_daily")
+    .select(
+      "client, snapshot_date, sent_total, sent_google, sent_microsoft, sent_other, replies_total, replies_google, replies_microsoft, replies_other"
+    )
+    .in("client", slugs)
+    .gte("snapshot_date", since)
+    .order("snapshot_date", { ascending: true })
+  if (until) query = query.lte("snapshot_date", until)
+  const { data } = await query
+
+  const byDate = new Map<string, RecipientDailyPoint>()
+  type Row = {
+    snapshot_date: string
+    sent_total: number | null
+    sent_google: number | null
+    sent_microsoft: number | null
+    sent_other: number | null
+    replies_total: number | null
+    replies_google: number | null
+    replies_microsoft: number | null
+    replies_other: number | null
+  }
+  for (const r of (data ?? []) as Row[]) {
+    const p =
+      byDate.get(r.snapshot_date) ??
+      ({
+        date: r.snapshot_date,
+        sentTotal: 0,
+        sentGoogle: 0,
+        sentMicrosoft: 0,
+        sentOther: 0,
+        repliesTotal: 0,
+        repliesGoogle: 0,
+        repliesMicrosoft: 0,
+        repliesOther: 0,
+      } as RecipientDailyPoint)
+    p.sentTotal += r.sent_total ?? 0
+    p.sentGoogle += r.sent_google ?? 0
+    p.sentMicrosoft += r.sent_microsoft ?? 0
+    p.sentOther += r.sent_other ?? 0
+    p.repliesTotal += r.replies_total ?? 0
+    p.repliesGoogle += r.replies_google ?? 0
+    p.repliesMicrosoft += r.replies_microsoft ?? 0
+    p.repliesOther += r.replies_other ?? 0
+    byDate.set(r.snapshot_date, p)
+  }
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date))
+}
+
+async function senderDailyForSlugs(
+  slugs: string[],
+  since: string,
+  until?: string | null
+): Promise<SenderDailyPoint[]> {
+  const supabase = createServerClient()
+  let query = supabase
+    .from("vw_cockpit_provider_daily")
+    .select("client, snapshot_date, sender_provider, sent, replies")
+    .in("client", slugs)
+    .gte("snapshot_date", since)
+    .order("snapshot_date", { ascending: true })
+  if (until) query = query.lte("snapshot_date", until)
+  const { data } = await query
+
+  const byDate = new Map<string, SenderDailyPoint>()
+  type Row = {
+    snapshot_date: string
+    sender_provider: string | null
+    sent: number | null
+    replies: number | null
+  }
+  for (const r of (data ?? []) as Row[]) {
+    const p =
+      byDate.get(r.snapshot_date) ??
+      ({
+        date: r.snapshot_date,
+        googleSent: 0,
+        googleReplies: 0,
+        microsoftSent: 0,
+        microsoftReplies: 0,
+        otherSent: 0,
+        otherReplies: 0,
+      } as SenderDailyPoint)
+    // smtp (and anything unexpected) buckets into "other" — matches the matrix.
+    const bucket =
+      r.sender_provider === "google" || r.sender_provider === "microsoft"
+        ? r.sender_provider
+        : "other"
+    if (bucket === "google") {
+      p.googleSent += r.sent ?? 0
+      p.googleReplies += r.replies ?? 0
+    } else if (bucket === "microsoft") {
+      p.microsoftSent += r.sent ?? 0
+      p.microsoftReplies += r.replies ?? 0
+    } else {
+      p.otherSent += r.sent ?? 0
+      p.otherReplies += r.replies ?? 0
+    }
+    byDate.set(r.snapshot_date, p)
+  }
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date))
+}
+
+/** Client Overview variants — wide fetch (era-floored), the range presets
+    filter client-side exactly like the performance history. */
+export const getClientRecipientDailySeries = cache(
+  async (client: string): Promise<RecipientDailyPoint[]> => {
+    const slugs = await resolveClientSlugs(client)
+    return recipientDailyForSlugs(slugs, SEND_CAPTURE_ERA_START)
+  }
+)
+
+export const getClientSenderDailySeries = cache(
+  async (client: string): Promise<SenderDailyPoint[]> => {
+    const slugs = await resolveClientSlugs(client)
+    return senderDailyForSlugs(slugs, SEND_CAPTURE_ERA_START)
+  }
+)
+
+/** Command Center variants — all active clients, fixed window ending at the
+    facts anchor (the CC card states the window explicitly; V4 C1). */
+export const getGlobalRecipientDailySeries = cache(
+  async (days: number = 30): Promise<RecipientDailyPoint[]> => {
+    const slugs = await getActiveClients()
+    const { cutoff, anchor } = await rangeWindow(days)
+    const since = cutoff < SEND_CAPTURE_ERA_START ? SEND_CAPTURE_ERA_START : cutoff
+    return recipientDailyForSlugs(slugs, since, anchor)
+  }
+)
+
+export const getGlobalSenderDailySeries = cache(
+  async (days: number = 30): Promise<SenderDailyPoint[]> => {
+    const slugs = await getActiveClients()
+    const { cutoff, anchor } = await rangeWindow(days)
+    return senderDailyForSlugs(slugs, cutoff, anchor)
+  }
+)
+
+/** Matrix cell-days come pre-aggregated (cockpit_provider_matrix_daily, filled
+    daily at 09:15 UTC by cockpit_fill_provider_matrix — never a live scan). */
+export const getClientProviderMatrixDaily = cache(
+  async (client: string): Promise<ProviderMatrixDay[]> => {
+    const supabase = createServerClient()
+    const slugs = await resolveClientSlugs(client)
+    const { data } = await supabase
+      .from("cockpit_provider_matrix_daily")
+      .select("day, client, sender_provider, recipient_provider, sends, replies")
+      .in("client", slugs)
+      .gte("day", SEND_CAPTURE_ERA_START)
+      .order("day", { ascending: true })
+
+    type Row = {
+      day: string
+      sender_provider: string
+      recipient_provider: string
+      sends: number | null
+      replies: number | null
+    }
+    // Sum across child slugs per (day, sender, recipient)
+    const byKey = new Map<string, ProviderMatrixDay>()
+    const bucket = (v: string): "google" | "microsoft" | "other" =>
+      v === "google" || v === "microsoft" ? v : "other"
+    for (const r of (data ?? []) as Row[]) {
+      const sender = bucket(r.sender_provider)
+      const recipient = bucket(r.recipient_provider)
+      const key = `${r.day}|${sender}|${recipient}`
+      const cell =
+        byKey.get(key) ?? { day: r.day, sender, recipient, sends: 0, replies: 0 }
+      cell.sends += r.sends ?? 0
+      cell.replies += r.replies ?? 0
+      byKey.set(key, cell)
+    }
+    return Array.from(byKey.values())
   }
 )
 

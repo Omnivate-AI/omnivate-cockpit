@@ -1,6 +1,7 @@
 import { cache } from "react"
 import { createServerClient } from "@/lib/supabase/server"
 import { getActiveClients, resolveClientSlugs } from "@/lib/queries/clients"
+import { rangeWindow } from "@/lib/queries/analytics"
 
 // Item-5 read models (migration cockpit_read_models_006):
 //   vw_cockpit_portfolio_health — per-client infra roll-up (PORT-2/3)
@@ -45,14 +46,17 @@ export const getClientRecipientSplit = cache(
     const supabase = createServerClient()
     const slugs = await resolveClientSlugs(client)
 
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
+    // V4 C1: business-day-anchored window, matching getClientProviderSplit —
+    // the two panels of the provider card previously covered slightly
+    // different windows (calendar cutoff vs facts anchor) under one title.
+    const { cutoff, anchor } = await rangeWindow(days)
 
     const { data } = await supabase
       .from("vw_cockpit_recipient_daily")
       .select("*")
       .in("client", slugs)
-      .gte("snapshot_date", cutoff.toISOString().split("T")[0])
+      .gte("snapshot_date", cutoff)
+      .lte("snapshot_date", anchor ?? cutoff)
 
     const totals = {
       google: { sent: 0, replies: 0 },

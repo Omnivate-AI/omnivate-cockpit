@@ -1,7 +1,14 @@
 import { Suspense } from "react"
 import { Mail, MessageSquare, MessageCircle, Percent, Send, Users } from "lucide-react"
-import { getGlobalKPIs, getClientSummaries } from "@/lib/queries/analytics"
+import {
+  getGlobalKPIs,
+  getClientSummaries,
+  getGlobalRecipientDailySeries,
+  getGlobalSenderDailySeries,
+} from "@/lib/queries/analytics"
 import { formatRatio } from "@/lib/format"
+import { fromRecipientDaily, fromSenderDaily } from "@/lib/chart-utils"
+import { ProviderReplyRateChart } from "@/components/clients/provider-insights"
 import { getPortfolioHealth } from "@/lib/queries/portfolio"
 import { PortfolioHealthStrip } from "@/components/dashboard/portfolio-health-strip"
 import { getTopAlerts } from "@/lib/queries/alerts"
@@ -32,13 +39,18 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
   const days = parseRangeDays(params.range)
   const rangeKey = params.range ?? "1d"
 
-  const [kpis, summaries, topAlerts, spamRisks, portfolio] = await Promise.all([
-    getGlobalKPIs(days),
-    getClientSummaries(days),
-    getTopAlerts(5),
-    getRecentSpamRisks(7, 3),
-    getPortfolioHealth(),
-  ])
+  const [kpis, summaries, topAlerts, spamRisks, portfolio, recipientDaily, senderDaily] =
+    await Promise.all([
+      getGlobalKPIs(days),
+      getClientSummaries(days),
+      getTopAlerts(5),
+      getRecentSpamRisks(7, 3),
+      getPortfolioHealth(),
+      // V4 C2/C3 aggregate charts — fixed 30-day window, labeled explicitly
+      // on the card (independent of the KPI range selector by design).
+      getGlobalRecipientDailySeries(30),
+      getGlobalSenderDailySeries(30),
+    ])
 
   const infraByClient = Object.fromEntries(
     portfolio.map((p) => [
@@ -188,6 +200,29 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
                 infraByClient={infraByClient}
               />
             </RangeVeil>
+          </div>
+
+          {/* V4 C2/C3 — all-clients provider reply-rate charts. Fixed 30-day
+              window ending at the facts anchor, stated on the card (answers
+              "what range is this?" — the range is printed, not implied). */}
+          <div>
+            <h2 className="mb-3 text-lg font-semibold text-foreground">
+              Provider Performance
+            </h2>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <ProviderReplyRateChart
+                points={fromRecipientDaily(recipientDaily)}
+                title="Reply Rate by Recipient Provider"
+                sideNote="All clients · recipient side — the inboxes we send INTO (live MX classification)"
+                rangeLabel={`Last 30 days ending ${anchorLabel}`}
+              />
+              <ProviderReplyRateChart
+                points={fromSenderDaily(senderDaily)}
+                title="Reply Rate by Sender Mailbox Provider"
+                sideNote="All clients · sender side — OUR mailbox pools (Google / Microsoft / Other-SMTP)"
+                rangeLabel={`Last 30 days ending ${anchorLabel}`}
+              />
+            </div>
           </div>
 
           {/* Daily Summary — the merged /digest: per-client breakdown +
