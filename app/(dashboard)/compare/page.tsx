@@ -5,10 +5,13 @@ import { getClientCompareStats } from "@/lib/queries/analytics"
 import { ClientSelector } from "@/components/compare/client-selector"
 import { MetricSelector } from "@/components/compare/metric-selector"
 import { ComparePanels } from "@/components/compare/compare-panels"
+import { DateRangePicker } from "@/components/clients/date-range-picker"
 import { EmptyState } from "@/components/shared/empty-state"
 import { SectionFreshness } from "@/components/shared/section-freshness"
 import { COMPARE_METRIC_KEYS } from "@/lib/compare-metrics"
 import { cn } from "@/lib/utils"
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 /**
  * V4 E1 — Compare rebuilt as a parameter picker: choose clients, choose any
@@ -27,7 +30,13 @@ const RANGE_PRESETS = [
 export default async function ComparePage({
   searchParams,
 }: {
-  searchParams: Promise<{ clients?: string; metrics?: string; range?: string }>
+  searchParams: Promise<{
+    clients?: string
+    metrics?: string
+    range?: string
+    from?: string
+    to?: string
+  }>
 }) {
   const params = await searchParams
   const allClients = await getActiveClients()
@@ -41,10 +50,22 @@ export default async function ComparePage({
   const validMetrics = metricsRaw.filter((m) => COMPARE_METRIC_KEYS.includes(m))
   const metricKeys = validMetrics.length > 0 ? validMetrics : COMPARE_METRIC_KEYS
 
+  // V5 — custom from/to (the same picker the client Overview has) overrides
+  // the presets when both dates are valid.
+  const customFrom = params.from && DATE_RE.test(params.from) ? params.from : undefined
+  const customTo = params.to && DATE_RE.test(params.to) ? params.to : undefined
+  const customActive = customFrom != null
+
   const range = RANGE_PRESETS.find((r) => r.key === params.range) ?? RANGE_PRESETS[1]
+  const rangeLabel = customActive ? `${customFrom} → ${customTo ?? "today"}` : range.label
 
-  const stats = selected.length >= 2 ? await getClientCompareStats(selected, range.days) : null
+  const stats =
+    selected.length >= 2
+      ? await getClientCompareStats(selected, range.days, customFrom, customTo)
+      : null
 
+  // Preset links intentionally DROP from/to — clicking a preset exits the
+  // custom range.
   const rangeHref = (key: string) => {
     const p = new URLSearchParams()
     if (params.clients) p.set("clients", params.clients)
@@ -79,28 +100,34 @@ export default async function ComparePage({
         <MetricSelector selected={metricKeys} />
       </div>
 
-      {/* Range presets — plain links, zero client JS */}
-      <div className="flex items-center gap-1 rounded-lg bg-muted p-1 w-fit">
-        {RANGE_PRESETS.map((r) => (
-          <Link
-            key={r.key}
-            href={rangeHref(r.key)}
-            aria-current={range.key === r.key ? "true" : undefined}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-              range.key === r.key
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {r.label}
-          </Link>
-        ))}
+      {/* Range presets + the custom from–to picker (V5 — Omar: "I want that
+          in the compare section as well"). Applying custom dates overrides
+          the preset; clicking a preset exits the custom range. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1 rounded-lg bg-muted p-1 w-fit">
+          {RANGE_PRESETS.map((r) => (
+            <Link
+              key={r.key}
+              href={rangeHref(r.key)}
+              aria-current={!customActive && range.key === r.key ? "true" : undefined}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                !customActive && range.key === r.key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {r.label}
+            </Link>
+          ))}
+        </div>
+        <DateRangePicker from={customFrom} to={customTo} />
       </div>
+      <p className="-mt-3 text-xs text-muted-foreground">Showing {rangeLabel}</p>
 
       {/* Panels or empty state */}
       {stats ? (
-        <ComparePanels stats={stats} metricKeys={metricKeys} rangeLabel={range.label} />
+        <ComparePanels stats={stats} metricKeys={metricKeys} rangeLabel={rangeLabel} />
       ) : (
         <EmptyState
           icon={GitCompareArrows}

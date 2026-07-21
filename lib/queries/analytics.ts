@@ -723,11 +723,20 @@ export interface CompareStatRow {
  * volume · positive reply rate %), one row per selected client, child slugs
  * summed. Same [cutoff, anchor] window and same formulas as the Command
  * Center KPIs, so Compare never disagrees with the rest of the app.
+ * V5: an explicit customFrom/customTo window (the date picker) overrides the
+ * preset days.
  */
 export const getClientCompareStats = cache(
-  async (clients: string[], days: number = 14): Promise<CompareStatRow[]> => {
+  async (
+    clients: string[],
+    days: number = 14,
+    customFrom?: string,
+    customTo?: string
+  ): Promise<CompareStatRow[]> => {
     const supabase = createServerClient()
-    const { cutoff, anchor } = await rangeWindow(days)
+    const preset = await rangeWindow(days)
+    const cutoff = customFrom ?? preset.cutoff
+    const anchor = customFrom ? customTo ?? preset.anchor : preset.anchor
 
     // slug → top-level selected client (resolves parent/child hierarchies)
     const slugSets = await Promise.all(clients.map((c) => resolveClientSlugs(c)))
