@@ -378,9 +378,17 @@ export interface ClientSummary {
       range-summed so the per-client breakdown sums to the headline KPI
       (V2 Phase 9 digest merge). */
   periodPositives: number
-  /** Distinct people emailed in the range (cockpit_contacts_emailed RPC) —
-      the denominator base for "contacts per positive reply" (V3 Phase 2). */
+  /** Distinct people emailed in the range — PRIMARY campaigns only as of V5
+      (cockpit_contacts_emailed_primary RPC) — the numerator base for
+      "contacts per positive reply" (V3 Phase 2, rescoped in V5). */
   periodContacts: number
+  /** Range sends by PRIMARY campaigns only (vw_cockpit_daily_client_class_perf,
+      migration 027) — numerator for emails-per-positive (V5). */
+  periodPrimarySends: number
+  /** Range positive replies from PRIMARY campaigns only — the denominator for
+      both efficiency ratios (V5: a follow-up campaign's "positive" is someone
+      already won being re-engaged, not a fresh outcome). */
+  periodPrimaryPositives: number
 }
 
 export interface DailySendDataPoint {
@@ -449,7 +457,9 @@ export const getContactsEmailed = cache(
     const activeSlugs = await getActiveClients()
     const { cutoff, anchor } = await rangeWindow(days)
 
-    const { data, error } = await supabase.rpc("cockpit_contacts_emailed", {
+    // V5: primary campaigns only — the ratio this feeds measures outreach
+    // efficiency, and follow-up/referral sends are post-positive by nature.
+    const { data, error } = await supabase.rpc("cockpit_contacts_emailed_primary", {
       p_start: cutoff,
       p_end: anchor ?? cutoff,
     })
@@ -470,14 +480,16 @@ export const getContactsEmailed = cache(
 export { SEND_CAPTURE_ERA_START }
 
 /** Distinct contacts for ONE client (children summed for parent slugs) over an
-    explicit [start, end] date window — cockpit_contacts_emailed RPC. */
+    explicit [start, end] date window. PRIMARY campaigns only (V5 — follow-up/
+    referral sends happen AFTER a positive; counting their recipients distorted
+    the efficiency ratios, Omar's AP observation). */
 async function contactsForWindow(
   slugs: string[],
   start: string,
   end: string
 ): Promise<number | null> {
   const supabase = createServerClient()
-  const { data, error } = await supabase.rpc("cockpit_contacts_emailed", {
+  const { data, error } = await supabase.rpc("cockpit_contacts_emailed_primary", {
     p_start: start,
     p_end: end,
   })
@@ -723,14 +735,22 @@ export const getClientCompareStats = cache(
     clients.forEach((c, i) => slugSets[i].forEach((s) => parentOf.set(s, c)))
     const allSlugs = Array.from(parentOf.keys())
 
-    const [perfRes, contactsRes] = await Promise.all([
+    const [perfRes, primaryRes, contactsRes] = await Promise.all([
       supabase
         .from("vw_cockpit_daily_client_perf")
         .select("client, snapshot_date, emails_sent_count, reply_count, positive_replies_count")
         .in("client", allSlugs)
         .gte("snapshot_date", cutoff)
         .lte("snapshot_date", anchor ?? cutoff),
-      supabase.rpc("cockpit_contacts_emailed", {
+      // V5: primary-only slice feeds the two efficiency ratio parameters.
+      supabase
+        .from("vw_cockpit_daily_client_class_perf")
+        .select("client, emails_sent_count, positive_replies_count")
+        .eq("campaign_class", "primary")
+        .in("client", allSlugs)
+        .gte("snapshot_date", cutoff)
+        .lte("snapshot_date", anchor ?? cutoff),
+      supabase.rpc("cockpit_contacts_emailed_primary", {
         p_start: cutoff,
         p_end: anchor ?? cutoff,
       }),
@@ -738,9 +758,24 @@ export const getClientCompareStats = cache(
 
     const acc = new Map<
       string,
-      { sends: number; positives: number; totalReplies: number; contacts: number | null }
+      {
+        sends: number
+        positives: number
+        totalReplies: number
+        contacts: number | null
+        primarySends: number
+        primaryPositives: number
+      }
     >()
-    for (const c of clients) acc.set(c, { sends: 0, positives: 0, totalReplies: 0, contacts: null })
+    for (const c of clients)
+      acc.set(c, {
+        sends: 0,
+        positives: 0,
+        totalReplies: 0,
+        contacts: null,
+        primarySends: 0,
+        primaryPositives: 0,
+      })
 
     for (const r of (perfRes.data ?? []) as PerfRow[]) {
       const parent = parentOf.get(r.client)
@@ -749,6 +784,17 @@ export const getClientCompareStats = cache(
       a.sends += r.emails_sent_count ?? 0
       a.positives += r.positive_replies_count ?? 0
       a.totalReplies += r.reply_count ?? 0
+    }
+    for (const r of (primaryRes.data ?? []) as {
+      client: string
+      emails_sent_count: number | null
+      positive_replies_count: number | null
+    }[]) {
+      const parent = parentOf.get(r.client)
+      if (!parent) continue
+      const a = acc.get(parent)!
+      a.primarySends += r.emails_sent_count ?? 0
+      a.primaryPositives += r.positive_replies_count ?? 0
     }
     if (!contactsRes.error && contactsRes.data) {
       for (const r of contactsRes.data as { client: string; contacts_emailed: number }[]) {
@@ -769,9 +815,13 @@ export const getClientCompareStats = cache(
         contacts: a.contacts,
         replyRate: a.sends > 0 ? (a.totalReplies / a.sends) * 100 : 0,
         positiveReplyRate: a.sends > 0 ? (a.positives / a.sends) * 100 : 0,
-        emailsPerPositive: a.positives > 0 ? a.sends / a.positives : null,
+        // V5: ratios are primary-scoped, matching the CC + client cards.
+        emailsPerPositive:
+          a.primaryPositives > 0 ? a.primarySends / a.primaryPositives : null,
         contactsPerPositive:
-          a.positives > 0 && a.contacts != null ? a.contacts / a.positives : null,
+          a.primaryPositives > 0 && a.contacts != null
+            ? a.contacts / a.primaryPositives
+            : null,
       }
     })
   }
@@ -838,14 +888,42 @@ export const getClientSummaries = cache(
       (slug) => configBySlug.get(slug) ?? defaultConfig(slug)
     )
 
-    // 2. Perf rows in period + latest per client
-    const { data: perfRows } = await supabase
-      .from("vw_cockpit_daily_client_perf")
-      .select("*")
-      .in("client", activeSlugs)
-      .gte("snapshot_date", cutoffStr)
-      .lte("snapshot_date", anchor ?? cutoffStr)
-      .order("snapshot_date", { ascending: false })
+    // 2. Perf rows in period + latest per client — plus the PRIMARY-only
+    //    slice (migration 027) that feeds the two efficiency ratios (V5).
+    const [{ data: perfRows }, { data: primaryRows }] = await Promise.all([
+      supabase
+        .from("vw_cockpit_daily_client_perf")
+        .select("*")
+        .in("client", activeSlugs)
+        .gte("snapshot_date", cutoffStr)
+        .lte("snapshot_date", anchor ?? cutoffStr)
+        .order("snapshot_date", { ascending: false }),
+      supabase
+        .from("vw_cockpit_daily_client_class_perf")
+        .select("client, snapshot_date, emails_sent_count, positive_replies_count")
+        .eq("campaign_class", "primary")
+        .in("client", activeSlugs)
+        .gte("snapshot_date", cutoffStr)
+        .lte("snapshot_date", anchor ?? cutoffStr),
+    ])
+
+    const periodPrimarySendsByClient = new Map<string, number>()
+    const periodPrimaryPositivesByClient = new Map<string, number>()
+    for (const r of (primaryRows ?? []) as {
+      client: string
+      emails_sent_count: number | null
+      positive_replies_count: number | null
+    }[]) {
+      periodPrimarySendsByClient.set(
+        r.client,
+        (periodPrimarySendsByClient.get(r.client) ?? 0) + (r.emails_sent_count ?? 0)
+      )
+      periodPrimaryPositivesByClient.set(
+        r.client,
+        (periodPrimaryPositivesByClient.get(r.client) ?? 0) +
+          (r.positive_replies_count ?? 0)
+      )
+    }
 
     const latestByClient = new Map<string, PerfRow>()
     const periodSendsByClient = new Map<string, number>()
@@ -960,6 +1038,9 @@ export const getClientSummaries = cache(
         periodReplies: periodRepliesByClient.get(config.client) ?? 0,
         periodPositives: periodPositivesByClient.get(config.client) ?? 0,
         periodContacts: contactsByClient.get(config.client) ?? 0,
+        periodPrimarySends: periodPrimarySendsByClient.get(config.client) ?? 0,
+        periodPrimaryPositives:
+          periodPrimaryPositivesByClient.get(config.client) ?? 0,
       })
     }
 
@@ -1015,6 +1096,14 @@ export const getClientSummaries = cache(
         ),
         periodContacts: childConfigs.reduce(
           (sum, c) => sum + (contactsByClient.get(c.client) ?? 0),
+          0
+        ),
+        periodPrimarySends: childConfigs.reduce(
+          (sum, c) => sum + (periodPrimarySendsByClient.get(c.client) ?? 0),
+          0
+        ),
+        periodPrimaryPositives: childConfigs.reduce(
+          (sum, c) => sum + (periodPrimaryPositivesByClient.get(c.client) ?? 0),
           0
         ),
       })
@@ -1105,6 +1194,52 @@ export const getClientPerformanceHistory = cache(
     const { data: rows } = await supabase
       .from("vw_cockpit_daily_client_perf")
       .select("snapshot_date, emails_sent_count, positive_replies_count, reply_count")
+      .in("client", slugs)
+      .gte("snapshot_date", cutoffStr)
+      .order("snapshot_date", { ascending: true })
+
+    const byDate = new Map<
+      string,
+      { sent: number; positive: number; total: number }
+    >()
+    for (const s of rows ?? []) {
+      const existing =
+        byDate.get(s.snapshot_date) ?? { sent: 0, positive: 0, total: 0 }
+      existing.sent += s.emails_sent_count ?? 0
+      existing.positive += s.positive_replies_count ?? 0
+      existing.total += s.reply_count ?? 0
+      byDate.set(s.snapshot_date, existing)
+    }
+
+    return Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, { sent, positive, total }]) => ({
+        date,
+        emailsSent: sent,
+        positiveReplies: positive,
+        totalReplies: total,
+      }))
+  }
+)
+
+/**
+ * V5 — the PRIMARY-campaigns-only daily history (same shape/windowing as
+ * getClientPerformanceHistory, read from vw_cockpit_daily_client_class_perf).
+ * Feeds ONLY the two efficiency ratio cards: follow-up/referral sends happen
+ * after a positive reply, so including them (or their "positives") distorts
+ * "how much outreach buys one positive". The KPI totals stay all-campaign.
+ */
+export const getClientPrimaryPerformanceHistory = cache(
+  async (client: string, days: number = 60): Promise<PerformanceHistoryPoint[]> => {
+    const supabase = createServerClient()
+    const slugs = await resolveClientSlugs(client)
+
+    const { cutoff: cutoffStr } = await rangeWindow(days)
+
+    const { data: rows } = await supabase
+      .from("vw_cockpit_daily_client_class_perf")
+      .select("snapshot_date, emails_sent_count, positive_replies_count, reply_count")
+      .eq("campaign_class", "primary")
       .in("client", slugs)
       .gte("snapshot_date", cutoffStr)
       .order("snapshot_date", { ascending: true })

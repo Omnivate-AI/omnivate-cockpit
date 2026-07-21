@@ -10,8 +10,12 @@ export interface DigestClientLine {
   positive: number
   totalReplies: number
   replyRate: number
-  /** Distinct people emailed in the range (V3 Phase 2). */
+  /** Distinct people emailed in the range — primary campaigns only (V5). */
   contacts?: number
+  /** Range sends by primary campaigns only — emails-per-positive numerator (V5). */
+  primarySends?: number
+  /** Range positives from primary campaigns only — ratio denominator (V5). */
+  primaryPositives?: number
 }
 
 export interface DigestTextInput {
@@ -44,8 +48,8 @@ export function buildDigestSummaryText(d: DigestTextInput): string {
   lines.push(`  Positive Replies: ${d.totalPositive.toLocaleString()} (Interested + human-action-required)`)
   lines.push(`  Total Replies: ${d.totalReplies.toLocaleString()}`)
   lines.push(`  Overall Reply Rate: ${pct(d.overallReplyRate)}`)
-  lines.push(`  Emails per Positive Reply: ${eff(d.emailsPerPositive)}`)
-  lines.push(`  Contacts per Positive Reply: ${eff(d.contactsPerPositive)}`)
+  lines.push(`  Emails per Positive Reply: ${eff(d.emailsPerPositive)} (primary campaigns)`)
+  lines.push(`  Contacts per Positive Reply: ${eff(d.contactsPerPositive)} (primary campaigns)`)
   lines.push("")
   lines.push("PER CLIENT")
   if (d.clients.length === 0) {

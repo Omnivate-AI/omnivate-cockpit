@@ -92,13 +92,20 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
   // Two efficiency KPIs (V3 Phase 2 B1, emails-per-positive restored in V4 —
   // Omar explicitly wants BOTH, differentiated: 10 emails to 1 person who
   // replies = 10:1 emails/positive but 1:1 contacts/positive. Do not re-drop
-  // as "redundant with reply rate"). periodContacts is the distinct-contacts
-  // RPC summed across clients; null-guard on 0 positives.
+  // as "redundant with reply rate").
+  // V5: both ratios are PRIMARY-campaigns-only, numerator AND denominator —
+  // follow-up/referral sends happen after a positive, so they inflated the
+  // ratio (Omar's AP 758/885 observation). Totals cards above stay all-campaign.
   const totalContacts = summaries.reduce((sum, s) => sum + (s.periodContacts ?? 0), 0)
+  const totalPrimarySends = summaries.reduce((sum, s) => sum + s.periodPrimarySends, 0)
+  const totalPrimaryPositives = summaries.reduce(
+    (sum, s) => sum + s.periodPrimaryPositives,
+    0
+  )
   const emailsPerPositive =
-    kpis.positiveReplies > 0 ? kpis.emailsSentYesterday / kpis.positiveReplies : null
+    totalPrimaryPositives > 0 ? totalPrimarySends / totalPrimaryPositives : null
   const contactsPerPositive =
-    kpis.positiveReplies > 0 ? totalContacts / kpis.positiveReplies : null
+    totalPrimaryPositives > 0 ? totalContacts / totalPrimaryPositives : null
   const fmtEff = formatRatio
   const windowLabel = days === 1 ? anchorLabel : rangeLabel
 
@@ -175,13 +182,13 @@ export default async function CommandCenterPage({ searchParams }: CommandCenterP
                   title="Emails per Positive Reply"
                   value={fmtEff(emailsPerPositive)}
                   icon={Send}
-                  subtitle={`Emails sent ÷ positive reply · ${windowLabel}`}
+                  subtitle={`Emails ÷ positive reply · primary campaigns · ${windowLabel}`}
                 />
                 <MetricCard
                   title="Contacts per Positive Reply"
                   value={fmtEff(contactsPerPositive)}
                   icon={Users}
-                  subtitle={`People emailed ÷ positive reply · ${windowLabel}`}
+                  subtitle={`People ÷ positive reply · primary campaigns · ${windowLabel}`}
                 />
               </div>
             </div>

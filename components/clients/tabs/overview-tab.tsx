@@ -8,6 +8,7 @@ import { alertSeverityColor } from "@/lib/design-tokens"
 import {
   getClientContactsByRange,
   getClientPerformanceHistory,
+  getClientPrimaryPerformanceHistory,
   getClientProviderMatrixDaily,
   getClientProviderSplit,
   getClientRecipientDailySeries,
@@ -49,6 +50,7 @@ export async function OverviewTab({
   const [
     topAlerts,
     performanceHistory,
+    primaryHistory,
     providerSplit,
     recipientSplit,
     readyBank,
@@ -59,12 +61,16 @@ export async function OverviewTab({
   ] = await Promise.all([
     getClientAlerts(clientSlug, false, 3),
     getClientPerformanceHistory(clientSlug, 365),
+    // V5: PRIMARY-only daily history feeds ONLY the two efficiency ratio
+    // cards (follow-up/referral sends are post-positive; they distorted the
+    // ratios — Omar's AP observation). The KPI totals stay all-campaign.
+    getClientPrimaryPerformanceHistory(clientSlug, 365),
     getClientProviderSplit(clientSlug, 14),
     getClientRecipientSplit(clientSlug, 14),
     getClientReadyBank(clientSlug),
     // V4 A3: distinct contacts precomputed per range preset — the two
     // efficiency ratios need a true COUNT(DISTINCT lead), which the daily
-    // history can't provide client-side.
+    // history can't provide client-side. (V5: primary campaigns only.)
     getClientContactsByRange(clientSlug, customFrom, customTo),
     // V4 C2-C4: provider daily series + matrix cells (era-floored; the
     // Overview's range selection filters them client-side).
@@ -89,6 +95,7 @@ export async function OverviewTab({
           vs target → reply rate), one range selector driving all. */}
       <OverviewPerformance
         history={performanceHistory}
+        primaryHistory={primaryHistory}
         config={config}
         customRange={customFrom ? { from: customFrom, to: customTo } : undefined}
         contactsByRange={contactsByRange}

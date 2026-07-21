@@ -39,17 +39,24 @@ export function DailySummary({
         totalReplies: s.periodReplies,
         replyRate: sent > 0 ? (s.periodReplies / sent) * 100 : 0,
         contacts: s.periodContacts,
+        primarySends: s.periodPrimarySends,
+        primaryPositives: s.periodPrimaryPositives,
       }
     })
     .sort((a, b) => b.sent - a.sent)
 
-  // Two efficiency metrics (V3 Phase 2 C1): emails / contacts to earn one
-  // positive reply, range-scoped. null when there are no positives yet.
+  // Two efficiency metrics (V3 Phase 2 C1; V5: PRIMARY campaigns only, both
+  // sides — follow-up/referral sends are post-positive and inflated these).
   const totalContacts = summaries.reduce((sum, s) => sum + (s.periodContacts ?? 0), 0)
+  const totalPrimarySends = summaries.reduce((sum, s) => sum + s.periodPrimarySends, 0)
+  const totalPrimaryPositives = summaries.reduce(
+    (sum, s) => sum + s.periodPrimaryPositives,
+    0
+  )
   const emailsPerPositive =
-    kpis.positiveReplies > 0 ? kpis.emailsSentYesterday / kpis.positiveReplies : null
+    totalPrimaryPositives > 0 ? totalPrimarySends / totalPrimaryPositives : null
   const contactsPerPositive =
-    kpis.positiveReplies > 0 ? totalContacts / kpis.positiveReplies : null
+    totalPrimaryPositives > 0 ? totalContacts / totalPrimaryPositives : null
 
   const text = buildDigestSummaryText({
     rangeLabel,
@@ -107,13 +114,13 @@ export function DailySummary({
                   <th className="pb-2 pr-4 font-medium text-right">Reply Rate</th>
                   <th
                     className="pb-2 pr-4 font-medium text-right"
-                    title="Emails sent ÷ positive replies in this range"
+                    title="Primary-campaign emails ÷ primary-campaign positive replies in this range (follow-up/referral sends excluded — they happen after a positive)"
                   >
                     Emails / Pos
                   </th>
                   <th
                     className="pb-2 font-medium text-right"
-                    title="Distinct people emailed ÷ positive replies in this range"
+                    title="Distinct people emailed by primary campaigns ÷ primary-campaign positive replies in this range"
                   >
                     Contacts / Pos
                   </th>
@@ -121,11 +128,15 @@ export function DailySummary({
               </thead>
               <tbody>
                 {clientLines.map((c) => {
+                  // V5: primary-only on both sides of each ratio.
+                  const primaryPos = c.primaryPositives ?? 0
                   const emailsPerPos =
-                    c.positive > 0 ? Math.round(c.sent / c.positive) : null
+                    primaryPos > 0 && c.primarySends != null
+                      ? Math.round(c.primarySends / primaryPos)
+                      : null
                   const contactsPerPos =
-                    c.positive > 0 && c.contacts != null
-                      ? Math.round(c.contacts / c.positive)
+                    primaryPos > 0 && c.contacts != null
+                      ? Math.round(c.contacts / primaryPos)
                       : null
                   return (
                     <tr key={c.displayName} className="border-b last:border-0">

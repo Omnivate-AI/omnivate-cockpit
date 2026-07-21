@@ -497,6 +497,14 @@ export function CampaignPerformanceTable({ campaigns, snapshotHistory = [] }: Ca
         </div>
       </div>
 
+      {/* V5 legibility: the tiles above follow the Period selector, but the
+          CARDS are lifetime — Omar compared a range-scoped client ratio to a
+          lifetime card figure and reasonably read it as a bug. Say it once. */}
+      <p className="-mt-2 text-[11px] text-muted-foreground">
+        Campaign cards show lifetime totals · the three tiles above follow the
+        Period selector
+      </p>
+
       {/* Active Campaigns — PRIMARY outbound only (Phase 5 section split) */}
       {activePrimary.length > 0 && (
         <div className="space-y-2">

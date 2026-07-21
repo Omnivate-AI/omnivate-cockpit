@@ -40,7 +40,7 @@ export const COMPARE_METRICS: CompareMetricDef[] = [
   {
     key: "emails_per_positive",
     label: "Emails per Positive Reply",
-    help: "Emails sent ÷ positive replies",
+    help: "Primary-campaign emails ÷ primary-campaign positive replies (follow-up/referral excluded)",
     lowerIsBetter: true,
     value: (r) => r.emailsPerPositive,
     format: formatRatio,
@@ -48,7 +48,7 @@ export const COMPARE_METRICS: CompareMetricDef[] = [
   {
     key: "contacts_per_positive",
     label: "Contacts per Positive Reply",
-    help: "Distinct people emailed ÷ positive replies",
+    help: "Distinct people emailed by primary campaigns ÷ primary-campaign positive replies",
     lowerIsBetter: true,
     value: (r) => r.contactsPerPositive,
     format: formatRatio,

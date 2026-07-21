@@ -79,10 +79,15 @@ export interface CustomRange {
 
 interface OverviewPerformanceProps {
   history: PerformanceHistoryPoint[]
+  /** V5 — PRIMARY-campaigns-only daily history; feeds ONLY the two efficiency
+      ratio cards (follow-up/referral sends happen after a positive). When
+      absent the ratios fall back to the all-campaign history. */
+  primaryHistory?: PerformanceHistoryPoint[]
   config: ClientConfig
   customRange?: CustomRange
   /** V4 A3 — distinct contacts precomputed server-side per range preset
-      (a COUNT(DISTINCT lead) can't be derived from the daily history). */
+      (a COUNT(DISTINCT lead) can't be derived from the daily history).
+      V5: primary campaigns only. */
   contactsByRange?: ClientContactsByRange
   /** V4 C2/C3/C4 — provider daily series + matrix cells (era-floored server
       fetches; the active range filters them client-side like everything else). */
@@ -182,6 +187,7 @@ function fillDaily(points: PerformanceHistoryPoint[]): PerformanceHistoryPoint[]
 
 export function OverviewPerformance({
   history,
+  primaryHistory,
   config,
   customRange,
   contactsByRange,
@@ -257,13 +263,29 @@ export function OverviewPerformance({
 
   // V4 A1/A3 — the two efficiency ratios, differentiated (Omar: emailing one
   // person 10 times who then replies = 10:1 emails/positive, 1:1
-  // contacts/positive). Emails/positive derives fully from the facts; contacts
-  // come precomputed per preset (COUNT DISTINCT can't be summed client-side).
-  const emailsPerPositive = current.positive > 0 ? current.sent / current.positive : null
+  // contacts/positive). Contacts come precomputed per preset (COUNT DISTINCT
+  // can't be summed client-side).
+  // V5 — PRIMARY campaigns only on BOTH sides: follow-up/referral sends are
+  // post-positive by nature, and their "positives" are re-engagements of
+  // already-won leads. Window-filter the primary history with the same
+  // predicate as the main series.
+  const primaryCurrent = useMemo(() => {
+    if (!primaryHistory) return null
+    const { start, end } = windowFor(range, customRange)
+    return sumPoints(
+      primaryHistory.filter((p) => {
+        const d = new Date(`${p.date}T00:00:00`)
+        return d >= start && d < end
+      })
+    )
+  }, [primaryHistory, range, customRange])
+  const ratioSent = primaryCurrent ? primaryCurrent.sent : current.sent
+  const ratioPositives = primaryCurrent ? primaryCurrent.positive : current.positive
+  const emailsPerPositive = ratioPositives > 0 ? ratioSent / ratioPositives : null
   const contactsInRange = contactsByRange ? contactsByRange[range] : null
   const contactsPerPositive =
-    contactsInRange != null && current.positive > 0
-      ? contactsInRange / current.positive
+    contactsInRange != null && ratioPositives > 0
+      ? contactsInRange / ratioPositives
       : null
   // Send-event capture began 2026-06-03 — an "All Time" contacts count can't
   // reach further back, so the label says so instead of implying all-time.
@@ -362,13 +384,13 @@ export function OverviewPerformance({
           title="Contacts per Positive Reply"
           value={formatRatio(contactsPerPositive)}
           icon={Users}
-          subtitle={`People emailed ÷ positive reply${contactsWindowNote}`}
+          subtitle={`People ÷ positive reply · primary campaigns${contactsWindowNote}`}
         />
         <MetricCard
           title="Emails per Positive Reply"
           value={formatRatio(emailsPerPositive)}
           icon={Send}
-          subtitle="Emails sent ÷ positive reply"
+          subtitle="Emails ÷ positive reply · primary campaigns"
         />
       </div>
 
