@@ -43,12 +43,20 @@ test("KPI cards render", async ({ page }) => {
   // day's date (e.g. "Reply Rate (Fri, 18 Jul)") — match the shape, not a
   // fixed range string.
   await expect(page.getByText(/^Reply Rate \(/).first()).toBeVisible()
-  // V3 Phase 2 efficiency cards
+  // V3 Phase 2 efficiency cards — BOTH restored in V4 (Omar wants the two
+  // ratios differentiated; never re-drop emails-per-positive as redundant)
   await expect(
     page.getByText("Emails per Positive Reply", { exact: true }).first()
   ).toBeVisible()
   await expect(
     page.getByText("Contacts per Positive Reply", { exact: true }).first()
+  ).toBeVisible()
+  // V4 C2/C3 — all-clients provider charts with the window PRINTED on the card
+  await expect(
+    page.getByText(/Reply Rate by Recipient Provider — Last 30 days ending/).first()
+  ).toBeVisible()
+  await expect(
+    page.getByText(/Reply Rate by Sender Mailbox Provider — Last 30 days ending/).first()
   ).toBeVisible()
 })
 

@@ -26,6 +26,17 @@ test("overview tab renders header and KPI grid", async ({
   await expect(page.getByText("By recipient inbox").first()).toBeVisible({
     timeout: 60_000,
   })
+  // V4 A1/A3 — BOTH efficiency ratio cards at the client level
+  await expect(
+    page.getByText("Contacts per Positive Reply", { exact: true }).first()
+  ).toBeVisible()
+  await expect(
+    page.getByText("Emails per Positive Reply", { exact: true }).first()
+  ).toBeVisible()
+  // V4 C2/C3/C4 — the provider suite follows the page's range selection
+  await expect(page.getByText(/Reply Rate by Recipient Provider —/).first()).toBeVisible()
+  await expect(page.getByText(/Reply Rate by Sender Mailbox Provider —/).first()).toBeVisible()
+  await expect(page.getByText(/Provider Matrix \(sender × recipient\) —/).first()).toBeVisible()
   for (const tab of [
     "Overview",
     "Positive Replies",
@@ -122,6 +133,33 @@ test("campaigns tab shows lifetime stats with sync label", async ({
     timeout: 60_000,
   })
   await expect(page.getByText(/Emails Sent/).first()).toBeVisible()
+  // V4 B1-B4 — cards lead with the positive-replies COUNT, then Sent and the
+  // two ratios; the PRR% is off the card face (detail panel keeps it).
+  await expect(page.getByText("Positive Replies", { exact: true }).first()).toBeVisible()
+  await expect(page.getByText("Contacts / Pos", { exact: true }).first()).toBeVisible()
+  await expect(page.getByText("Emails / Pos", { exact: true }).first()).toBeVisible()
+  await expect(page.getByText("Positive Reply Rate", { exact: true })).toHaveCount(0)
+})
+
+test("pipelines tab: engine DAG section + collapsed-by-default cards (V4 D1/D2)", async ({
+  page,
+}) => {
+  await page.goto(`/clients/${CLIENT}?tab=pipelines`)
+  await expect(page.getByText("Campaign Pipelines").first()).toBeVisible({
+    timeout: 60_000,
+  })
+  // Cylindo has both worlds: an engine campaign + legacy definitions
+  await expect(page.getByText("Legacy Pipelines").first()).toBeVisible()
+  const engineCard = page.getByText("Cylindo Stage 2 Personalization").first()
+  await expect(engineCard).toBeVisible()
+  // Collapsed by default — the DAG body stays in the DOM (native <details>)
+  // but must not be VISIBLE until the card is expanded. (Match the band label
+  // "{n} steps — run in parallel", not the section subtitle prose.)
+  const bandLabel = page.getByText(/\d+ steps — run in parallel/)
+  await expect(bandLabel.first()).toBeHidden()
+  // …and expands on click to reveal the true flow.
+  await engineCard.click()
+  await expect(bandLabel.first()).toBeVisible()
 })
 
 test("placement tab renders results or explicit empty state", async ({

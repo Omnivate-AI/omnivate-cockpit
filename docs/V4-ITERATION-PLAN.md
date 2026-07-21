@@ -29,12 +29,12 @@ V3 landed the right headline metric — now you want it **everywhere and differe
 
 | Phase | What | Action points | Status |
 |---|---|---|---|
-| 1 | Both conversion ratios as cards: Command Center (restore emails/PR) + client level | A1–A3 | ⏳ In build |
-| 2 | Campaign cards re-led: positive replies #1 · sent · both ratios (PRR% off the top spot) | B1–B4 | ⏳ In build |
-| 3 | Provider truth: recipient + sender reply-rate line graphs · 3×3 matrix · explicit windows | C1–C4 | ⏳ In build |
-| 4 | Pipelines: collapsible cards + true DAG flow visualization | D1–D2 | ⏳ In build |
-| 5 | Compare: parameter picker (clients × metrics) | E1 | ⏳ In build |
-| 6 | QA vs prod + deploy + walkthrough | — | ⏳ Pending |
+| 1 | Both conversion ratios as cards: Command Center (restore emails/PR) + client level | A1–A3 | ✅ Shipped 2026-07-21 |
+| 2 | Campaign cards re-led: positive replies #1 · sent · both ratios (PRR% off the top spot) | B1–B4 | ✅ Shipped 2026-07-21 |
+| 3 | Provider truth: recipient + sender reply-rate line graphs · 3×3 matrix · explicit windows | C1–C4 | ✅ Shipped 2026-07-21 |
+| 4 | Pipelines: collapsible cards + true DAG flow visualization | D1–D2 | ✅ Shipped 2026-07-21 |
+| 5 | Compare: parameter picker (clients × metrics) | E1 | ✅ Shipped 2026-07-21 |
+| 6 | QA vs prod + deploy + walkthrough | — | ✅ Suite green (37 passed) · deployed · proofs in `docs/V4-BUILD-NOTES.md` |
 
 ---
 
@@ -97,7 +97,7 @@ V3 landed the right headline metric — now you want it **everywhere and differe
 1. **Where the provider graphs live:** client Overview (per-client diagnosis is where you were reading them) + an all-clients aggregate on the Command Center. The 3×3 matrix goes on the client Overview.
 2. **Matrix cell content:** reply rate as the headline of each cell with sends underneath — rate alone hides volume, volume alone hides efficiency.
 3. **PRR% survives** in campaign detail panels and Compare — removed only as the card's top figure.
-4. **Pipeline default state:** all collapsed except pipelines with recent activity; "expand all" control provided.
+4. **Pipeline default state:** ALL cards open collapsed (your words — "so we don't have these massive cards"), with active pipelines listed first; one click expands any card.
 5. **Ratios' precision:** shown as whole numbers when ≥10 (e.g. "1,084"), one decimal below 10 (e.g. "6.3") — matches how you'd say them aloud.
 
 ---

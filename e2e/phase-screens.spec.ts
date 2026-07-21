@@ -23,6 +23,9 @@ test.describe("phase screenshots", () => {
       { path: "client-overview.png", url: `/clients/${CLIENT}`, waitFor: "Positive Replies" },
       { path: "client-campaigns.png", url: `/clients/${CLIENT}?tab=campaigns`, waitFor: "Campaign stats synced" },
       { path: "client-mailboxes.png", url: `/clients/${CLIENT}?tab=mailboxes`, waitFor: "Rotation Groups" },
+      // V4 surfaces
+      { path: "v4-client-pipelines.png", url: `/clients/${CLIENT}?tab=pipelines`, waitFor: "Campaign Pipelines" },
+      { path: "v4-compare.png", url: "/compare?clients=cylindo,paycaptain,acceleration_partners,omnivate", waitFor: "lower is better" },
     ]
 
     for (const s of shots) {
