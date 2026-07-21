@@ -1,7 +1,39 @@
 import { cache } from "react"
 import { createServerClient } from "@/lib/supabase/server"
+import { resolveClientSlugs } from "@/lib/queries/clients"
 
 // --- Interfaces ---
+
+/** One step of a Pipeline-Engine v2/v3 campaign (`campaign_steps`). Carries
+    REAL dependency data — `dependencies` (array of step IDs, v2/v3) or the
+    single legacy `depends_on_step` — which is what makes the true DAG
+    rendering possible (V4 D2). */
+export interface EngineCampaignStep {
+  id: number
+  step_order: number
+  name: string
+  step_type: string | null
+  depends_on_step: number | null
+  dependencies: number[] | null
+  parallelizable: boolean | null
+  has_condition: boolean
+  is_active: boolean
+}
+
+/** A Pipeline-Engine campaign (`campaigns` registry — the modern v2/v3
+    builds, e.g. "Cylindo Stage 2 Personalization"), distinct from the legacy
+    `pipeline_definitions` monoliths. */
+export interface EngineCampaign {
+  id: number
+  name: string
+  client: string
+  status: string | null
+  engine_version: string | null
+  lead_table: string | null
+  description: string | null
+  updated_at: string | null
+  steps: EngineCampaignStep[]
+}
 
 export interface PipelineDefinition {
   id: number
@@ -104,6 +136,77 @@ export const getClientPipelines = cache(
       ...row,
       steps: (row.steps ?? []) as PipelineStep[],
       settings: (row.settings ?? null) as Record<string, unknown> | null,
+    }))
+  }
+)
+
+/** Engine campaigns for a client (parent slugs resolved), steps attached and
+    ordered. Retired/archived campaigns excluded — this powers the Pipelines
+    tab's "true shape of the build" section (V4 D1/D2). */
+export const getClientEngineCampaigns = cache(
+  async (client: string): Promise<EngineCampaign[]> => {
+    const supabase = createServerClient()
+    const slugs = await resolveClientSlugs(client)
+
+    const { data: campaigns } = await supabase
+      .from("campaigns")
+      .select("id, name, client, status, engine_version, lead_table, description, updated_at")
+      .in("client", slugs)
+      .not("status", "in", "(retired,archived)")
+      .order("updated_at", { ascending: false })
+
+    if (!campaigns || campaigns.length === 0) return []
+
+    const ids = campaigns.map((c) => c.id)
+    const { data: steps } = await supabase
+      .from("campaign_steps")
+      .select(
+        "id, campaign_id, step_order, name, step_type, depends_on_step, dependencies, parallelizable, condition, is_active"
+      )
+      .in("campaign_id", ids)
+      .order("step_order", { ascending: true })
+
+    type StepRow = {
+      id: number
+      campaign_id: number
+      step_order: number | null
+      name: string
+      step_type: string | null
+      depends_on_step: number | null
+      dependencies: unknown
+      parallelizable: boolean | null
+      condition: unknown
+      is_active: boolean | null
+    }
+    const byCampaign = new Map<number, EngineCampaignStep[]>()
+    for (const s of (steps ?? []) as StepRow[]) {
+      const list = byCampaign.get(s.campaign_id) ?? []
+      list.push({
+        id: s.id,
+        step_order: s.step_order ?? 0,
+        name: s.name,
+        step_type: s.step_type,
+        depends_on_step: s.depends_on_step,
+        dependencies: Array.isArray(s.dependencies)
+          ? (s.dependencies as unknown[]).map(Number).filter(Number.isFinite)
+          : null,
+        parallelizable: s.parallelizable,
+        has_condition: s.condition != null,
+        is_active: s.is_active ?? true,
+      })
+      byCampaign.set(s.campaign_id, list)
+    }
+
+    return campaigns.map((c) => ({
+      id: c.id,
+      name: c.name,
+      client: c.client,
+      status: c.status,
+      engine_version: c.engine_version,
+      lead_table: c.lead_table,
+      description: c.description,
+      updated_at: c.updated_at,
+      steps: byCampaign.get(c.id) ?? [],
     }))
   }
 )

@@ -1,5 +1,6 @@
 import {
   getClientPipelines,
+  getClientEngineCampaigns,
   getLatestPipelineRun,
   getPipelineRuns,
   getCampaignPrompts,
@@ -10,14 +11,14 @@ import type {
   GroupedCampaignPrompts,
 } from "@/lib/queries/pipelines"
 import { PipelineFlow } from "@/components/pipelines/pipeline-flow"
+import { EngineCampaignCard } from "@/components/pipelines/engine-campaign-card"
 import { RunPipelineButton } from "@/components/pipelines/run-pipeline-button"
 import { PromptLibraryViewer } from "@/components/pipelines/prompt-library-viewer"
 import { PipelineRunHistory } from "@/components/pipelines/pipeline-run-history"
 import { EmptyState } from "@/components/shared/empty-state"
 import { SectionFreshness } from "@/components/shared/section-freshness"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Workflow } from "lucide-react"
+import { ChevronRight, Workflow } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface PipelinesTabProps {
@@ -58,6 +59,14 @@ function LatestRunInfo({ run }: { run: PipelineRun }) {
   )
 }
 
+/**
+ * V4 D1 — every pipeline card is a COLLAPSIBLE (native <details>), collapsed
+ * by default with a one-line summary, so the tab opens compact instead of a
+ * wall of massive cards. Legacy pipeline_definitions steps carry no dependency
+ * data — they are genuinely sequential monoliths, so their body keeps the
+ * sequential PipelineFlow (that IS their true shape); the engine campaigns
+ * above render the real DAG.
+ */
 function PipelineCard({
   pipeline,
   latestRun,
@@ -70,42 +79,41 @@ function PipelineCard({
   runs: PipelineRun[]
 }) {
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <CardTitle className="text-base">{pipeline.name}</CardTitle>
-            <p className="text-xs text-muted-foreground font-mono">{pipeline.table_name}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <RunPipelineButton
-              pipelineId={pipeline.id}
-              client={pipeline.client}
-              pipelineName={pipeline.name}
-            />
-            <Badge
-              variant="outline"
-              className={cn(
-                pipeline.is_active
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400"
-                  : "border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
-              )}
-            >
-              {pipeline.is_active ? "Active" : "Inactive"}
-            </Badge>
-            <span className="text-xs text-muted-foreground">
-              {pipeline.steps.length} step{pipeline.steps.length !== 1 ? "s" : ""}
-            </span>
-          </div>
+    <details className="group rounded-lg border bg-card">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+        <div className="min-w-0 flex-1">
+          <span className="text-sm font-medium">{pipeline.name}</span>
+          <span className="ml-2 hidden font-mono text-xs text-muted-foreground sm:inline">
+            {pipeline.table_name}
+          </span>
         </div>
+        {latestRun && <RunStatusBadge status={latestRun.status} />}
+        <Badge
+          variant="outline"
+          className={cn(
+            "shrink-0",
+            pipeline.is_active
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400"
+              : "border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+          )}
+        >
+          {pipeline.is_active ? "Active" : "Inactive"}
+        </Badge>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {pipeline.steps.length} step{pipeline.steps.length !== 1 ? "s" : ""}
+        </span>
+      </summary>
 
-        {latestRun && (
-          <div className="pt-2">
-            <LatestRunInfo run={latestRun} />
-          </div>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-4">
+      <div className="space-y-4 border-t px-4 py-4">
+        <div className="flex items-center justify-between gap-3">
+          {latestRun ? <LatestRunInfo run={latestRun} /> : <span />}
+          <RunPipelineButton
+            pipelineId={pipeline.id}
+            client={pipeline.client}
+            pipelineName={pipeline.name}
+          />
+        </div>
         <PipelineFlow steps={pipeline.steps} latestRun={latestRun} />
         {prompts && Object.keys(prompts).length > 0 && (
           <div className="border-t pt-4">
@@ -116,8 +124,8 @@ function PipelineCard({
           <h4 className="text-sm font-medium mb-3">Run History</h4>
           <PipelineRunHistory runs={runs} />
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </details>
   )
 }
 
@@ -130,9 +138,12 @@ function getCampaignIdFromPipeline(pipeline: PipelineDefinition): number | null 
 }
 
 export async function PipelinesTab({ clientSlug }: PipelinesTabProps) {
-  const pipelines = await getClientPipelines(clientSlug)
+  const [pipelines, engineCampaigns] = await Promise.all([
+    getClientPipelines(clientSlug),
+    getClientEngineCampaigns(clientSlug),
+  ])
 
-  if (pipelines.length === 0) {
+  if (pipelines.length === 0 && engineCampaigns.length === 0) {
     return (
       <EmptyState
         icon={Workflow}
@@ -154,20 +165,54 @@ export async function PipelinesTab({ clientSlug }: PipelinesTabProps) {
     ),
   ])
 
+  // Active engine campaigns first (they're what's running), drafts after.
+  const engineSorted = [...engineCampaigns].sort((a, b) => {
+    const rank = (s: string | null) => (s === "active" ? 0 : s === "draft" ? 1 : 2)
+    return rank(a.status) - rank(b.status)
+  })
+
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
         <SectionFreshness mode="db" prefix="Live pipeline state" />
       </div>
-      {pipelines.map((pipeline, index) => (
-        <PipelineCard
-          key={pipeline.id}
-          pipeline={pipeline}
-          latestRun={latestRuns[index]}
-          prompts={promptSets[index]}
-          runs={runHistories[index]}
-        />
-      ))}
+
+      {/* Engine campaigns (the `campaigns` registry — v2/v3 DAG builds) */}
+      {engineSorted.length > 0 && (
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Campaign Pipelines</h3>
+            <p className="text-xs text-muted-foreground">
+              Pipeline-Engine campaigns — expand a card to see the true flow:
+              steps side-by-side run in parallel, arrows mark dependencies.
+            </p>
+          </div>
+          {engineSorted.map((c) => (
+            <EngineCampaignCard key={c.id} campaign={c} />
+          ))}
+        </section>
+      )}
+
+      {/* Legacy pipeline_definitions (sequential monoliths — their true shape) */}
+      {pipelines.length > 0 && (
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Legacy Pipelines</h3>
+            <p className="text-xs text-muted-foreground">
+              Pre-engine pipelines — strictly sequential by design.
+            </p>
+          </div>
+          {pipelines.map((pipeline, index) => (
+            <PipelineCard
+              key={pipeline.id}
+              pipeline={pipeline}
+              latestRun={latestRuns[index]}
+              prompts={promptSets[index]}
+              runs={runHistories[index]}
+            />
+          ))}
+        </section>
+      )}
     </div>
   )
 }
