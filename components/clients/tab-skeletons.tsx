@@ -11,8 +11,12 @@ import type { TabValue } from "./tab-config"
  */
 export function TabSkeleton({ tab }: { tab: TabValue }) {
   switch (tab) {
-    case "overview":
+    case "email":
+      // The email tab carries the old overview's KPI-and-charts shape.
       return <OverviewSkeleton />
+    case "overview":
+    case "linkedin":
+      return <CardsSkeleton count={3} />
     case "mailboxes":
       return <MailboxesSkeleton />
     case "placement":

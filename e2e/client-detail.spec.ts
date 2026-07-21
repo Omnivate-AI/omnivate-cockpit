@@ -7,10 +7,10 @@ import { test, expect } from "@playwright/test"
 
 const CLIENT = "cylindo"
 
-test("overview tab renders header and KPI grid", async ({
+test("email tab renders header and KPI grid (the old overview, V5 restructure)", async ({
   page,
 }) => {
-  await page.goto(`/clients/${CLIENT}`)
+  await page.goto(`/clients/${CLIENT}?tab=email`)
   await expect(page.getByText("Cylindo").first()).toBeVisible()
   // V3 Phase 3: the duplicate all-time KPI row was removed; the range-scoped
   // performance suite now owns positive replies. Assert the chart title
@@ -39,6 +39,8 @@ test("overview tab renders header and KPI grid", async ({
   await expect(page.getByText(/Provider Matrix \(sender × recipient\) —/).first()).toBeVisible()
   for (const tab of [
     "Overview",
+    "Email",
+    "LinkedIn",
     "Positive Replies",
     "Campaigns",
     "Pipelines",
@@ -49,6 +51,37 @@ test("overview tab renders header and KPI grid", async ({
   ]) {
     await expect(page.getByRole("tab", { name: tab })).toBeVisible()
   }
+})
+
+test("combined overview shows both channels + the all-time combined line (V5)", async ({
+  page,
+}) => {
+  await page.goto(`/clients/${CLIENT}`)
+  // Default tab = the NEW combined overview: one card per channel with deep
+  // links, and the single place the channels are summed (all-time).
+  await expect(page.getByText("Open Email tab").first()).toBeVisible({
+    timeout: 60_000,
+  })
+  await expect(page.getByText("Open LinkedIn tab").first()).toBeVisible()
+  await expect(
+    page.getByText(/Positive replies to date, both channels/).first()
+  ).toBeVisible()
+})
+
+test("linkedin tab renders paused banner, KPIs and campaign rows (V5)", async ({
+  page,
+}) => {
+  await page.goto(`/clients/${CLIENT}?tab=linkedin`)
+  await expect(
+    page.getByText("Connection Requests Sent", { exact: true }).first()
+  ).toBeVisible({ timeout: 60_000 })
+  await expect(
+    page.getByText(/All LinkedIn campaigns are paused/).first()
+  ).toBeVisible()
+  await expect(page.getByText("Connections Accepted", { exact: true }).first()).toBeVisible()
+  // Cylindo's four sender campaigns (seeded from the verified 26 Jun review)
+  await expect(page.getByText("Jennifer Rasmussen").first()).toBeVisible()
+  await expect(page.getByText("Jostein Pedersen").first()).toBeVisible()
 })
 
 test("interested leads tab renders table or explicit empty state", async ({

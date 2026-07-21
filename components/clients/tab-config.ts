@@ -7,7 +7,11 @@
  * next build both stay green).
  */
 export const TAB_CONFIG = [
+  // V5 restructure (Omar): Overview = both channels side by side; the old
+  // email-only overview lives on as the Email tab; LinkedIn gets its own.
   { value: "overview", label: "Overview" },
+  { value: "email", label: "Email" },
+  { value: "linkedin", label: "LinkedIn" },
   { value: "interested", label: "Positive Replies" },
   { value: "campaigns", label: "Campaigns" },
   { value: "pipelines", label: "Pipelines" },

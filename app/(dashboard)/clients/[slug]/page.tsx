@@ -4,7 +4,9 @@ import { ClientHeader } from "@/components/clients/client-header"
 import { ClientTabs } from "@/components/clients/client-tabs"
 import { isTabValue, type TabValue } from "@/components/clients/tab-config"
 import { TabSkeleton } from "@/components/clients/tab-skeletons"
-import { OverviewTab } from "@/components/clients/tabs/overview-tab"
+import { EmailTab } from "@/components/clients/tabs/email-tab"
+import { CombinedOverviewTab } from "@/components/clients/tabs/combined-overview-tab"
+import { LinkedInTab } from "@/components/clients/tabs/linkedin-tab"
 import { InterestedLeadsTab } from "@/components/clients/tabs/interested-leads-tab"
 import { CampaignsTab } from "@/components/clients/tabs/campaigns-tab"
 import { MailboxesTab } from "@/components/clients/tabs/mailboxes-tab"
@@ -114,9 +116,15 @@ export default async function ClientPage({ params, searchParams }: ClientPagePro
   // shows optimistically, so click → content is one continuous surface.
   function renderActiveTab(tab: TabValue) {
     switch (tab) {
+      // V5 restructure: Overview = both channels; Email = the old overview
+      // content, untouched; LinkedIn = the new Aimfox surface.
       case "overview":
+        return (
+          <CombinedOverviewTab clientSlug={client} latestSnapshot={latestSnapshot} />
+        )
+      case "email":
         return config ? (
-          <OverviewTab
+          <EmailTab
             clientSlug={client}
             latestSnapshot={latestSnapshot}
             config={config}
@@ -127,6 +135,8 @@ export default async function ClientPage({ params, searchParams }: ClientPagePro
         ) : (
           noConfig
         )
+      case "linkedin":
+        return <LinkedInTab clientSlug={client} />
       case "interested":
         return <InterestedLeadsTab clientSlug={client} />
       case "campaigns":

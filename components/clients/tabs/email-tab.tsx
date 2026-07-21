@@ -23,7 +23,7 @@ import { SectionFreshness } from "@/components/shared/section-freshness"
 import type { ClientSnapshot } from "@/types/analytics"
 import type { ClientConfig } from "@/types/analytics"
 
-interface OverviewTabProps {
+interface EmailTabProps {
   clientSlug: string
   latestSnapshot: ClientSnapshot | null
   config: ClientConfig
@@ -35,14 +35,14 @@ interface OverviewTabProps {
   customTo?: string
 }
 
-export async function OverviewTab({
+export async function EmailTab({
   clientSlug,
   latestSnapshot,
   config,
   alertCount,
   customFrom,
   customTo,
-}: OverviewTabProps) {
+}: EmailTabProps) {
   // ONE wide history fetch feeds the KPI cards AND all three charts (V2
   // Phase 5) — the range presets + custom picker filter it client-side, so
   // switches are instant. 365 days comfortably covers "All Time" (facts

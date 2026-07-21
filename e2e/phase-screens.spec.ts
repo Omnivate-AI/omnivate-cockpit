@@ -26,6 +26,10 @@ test.describe("phase screenshots", () => {
       // V4 surfaces
       { path: "v4-client-pipelines.png", url: `/clients/${CLIENT}?tab=pipelines`, waitFor: "Campaign Pipelines" },
       { path: "v4-compare.png", url: "/compare?clients=cylindo,paycaptain,acceleration_partners,omnivate", waitFor: "lower is better" },
+      // V5 surfaces
+      { path: "v5-overview-combined.png", url: `/clients/${CLIENT}`, waitFor: "Open LinkedIn tab" },
+      { path: "v5-email-tab.png", url: `/clients/${CLIENT}?tab=email`, waitFor: "Positive Reply Rate" },
+      { path: "v5-linkedin-tab.png", url: `/clients/${CLIENT}?tab=linkedin`, waitFor: "Connection Requests Sent" },
     ]
 
     for (const s of shots) {
