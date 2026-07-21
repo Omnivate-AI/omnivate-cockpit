@@ -33,7 +33,8 @@ export function ClientSelector({ allClients, selected }: ClientSelectorProps) {
       if (current.has(client)) {
         current.delete(client)
       } else {
-        if (current.size >= 3) return // max 3
+        // No cap — Omar V4: "I want to select different clients… if I click
+        // all my different clients."
         current.add(client)
       }
       const params = new URLSearchParams(searchParams.toString())
@@ -51,18 +52,15 @@ export function ClientSelector({ allClients, selected }: ClientSelectorProps) {
     <div className="flex flex-wrap gap-2">
       {allClients.map((client) => {
         const isSelected = selected.includes(client)
-        const isDisabled = !isSelected && selected.length >= 3
         return (
           <button
             key={client}
             onClick={() => toggleClient(client)}
-            disabled={isDisabled}
             className={cn(
               "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
               isSelected
                 ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300"
-                : "border-border bg-background text-muted-foreground hover:bg-stone-50 dark:hover:bg-accent/50",
-              isDisabled && "opacity-40 cursor-not-allowed"
+                : "border-border bg-background text-muted-foreground hover:bg-stone-50 dark:hover:bg-accent/50"
             )}
           >
             <span
@@ -75,11 +73,6 @@ export function ClientSelector({ allClients, selected }: ClientSelectorProps) {
           </button>
         )
       })}
-      {selected.length >= 3 && (
-        <span className="flex items-center text-xs text-muted-foreground">
-          Max 3 clients
-        </span>
-      )}
     </div>
   )
 }

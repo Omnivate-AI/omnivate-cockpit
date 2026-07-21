@@ -689,6 +689,94 @@ export const getGlobalSenderDailySeries = cache(
   }
 )
 
+// --- V4 E1 — Compare: the six pickable parameters, per client ---
+
+export interface CompareStatRow {
+  client: string
+  sends: number
+  positives: number
+  totalReplies: number
+  contacts: number | null
+  /** Total replies ÷ sends ×100 — the Command Center "Reply Rate" semantic. */
+  replyRate: number
+  /** Positive replies ÷ sends ×100. */
+  positiveReplyRate: number
+  emailsPerPositive: number | null
+  contactsPerPositive: number | null
+}
+
+/**
+ * Range-scoped aggregates for the Compare page — every parameter Omar listed
+ * (positive replies · reply rate · emails/positive · contacts/positive ·
+ * volume · positive reply rate %), one row per selected client, child slugs
+ * summed. Same [cutoff, anchor] window and same formulas as the Command
+ * Center KPIs, so Compare never disagrees with the rest of the app.
+ */
+export const getClientCompareStats = cache(
+  async (clients: string[], days: number = 14): Promise<CompareStatRow[]> => {
+    const supabase = createServerClient()
+    const { cutoff, anchor } = await rangeWindow(days)
+
+    // slug → top-level selected client (resolves parent/child hierarchies)
+    const slugSets = await Promise.all(clients.map((c) => resolveClientSlugs(c)))
+    const parentOf = new Map<string, string>()
+    clients.forEach((c, i) => slugSets[i].forEach((s) => parentOf.set(s, c)))
+    const allSlugs = Array.from(parentOf.keys())
+
+    const [perfRes, contactsRes] = await Promise.all([
+      supabase
+        .from("vw_cockpit_daily_client_perf")
+        .select("client, snapshot_date, emails_sent_count, reply_count, positive_replies_count")
+        .in("client", allSlugs)
+        .gte("snapshot_date", cutoff)
+        .lte("snapshot_date", anchor ?? cutoff),
+      supabase.rpc("cockpit_contacts_emailed", {
+        p_start: cutoff,
+        p_end: anchor ?? cutoff,
+      }),
+    ])
+
+    const acc = new Map<
+      string,
+      { sends: number; positives: number; totalReplies: number; contacts: number | null }
+    >()
+    for (const c of clients) acc.set(c, { sends: 0, positives: 0, totalReplies: 0, contacts: null })
+
+    for (const r of (perfRes.data ?? []) as PerfRow[]) {
+      const parent = parentOf.get(r.client)
+      if (!parent) continue
+      const a = acc.get(parent)!
+      a.sends += r.emails_sent_count ?? 0
+      a.positives += r.positive_replies_count ?? 0
+      a.totalReplies += r.reply_count ?? 0
+    }
+    if (!contactsRes.error && contactsRes.data) {
+      for (const r of contactsRes.data as { client: string; contacts_emailed: number }[]) {
+        const parent = parentOf.get(r.client)
+        if (!parent) continue
+        const a = acc.get(parent)!
+        a.contacts = (a.contacts ?? 0) + (Number(r.contacts_emailed) || 0)
+      }
+    }
+
+    return clients.map((client) => {
+      const a = acc.get(client)!
+      return {
+        client,
+        sends: a.sends,
+        positives: a.positives,
+        totalReplies: a.totalReplies,
+        contacts: a.contacts,
+        replyRate: a.sends > 0 ? (a.totalReplies / a.sends) * 100 : 0,
+        positiveReplyRate: a.sends > 0 ? (a.positives / a.sends) * 100 : 0,
+        emailsPerPositive: a.positives > 0 ? a.sends / a.positives : null,
+        contactsPerPositive:
+          a.positives > 0 && a.contacts != null ? a.contacts / a.positives : null,
+      }
+    })
+  }
+)
+
 /** Matrix cell-days come pre-aggregated (cockpit_provider_matrix_daily, filled
     daily at 09:15 UTC by cockpit_fill_provider_matrix — never a live scan). */
 export const getClientProviderMatrixDaily = cache(
@@ -1045,94 +1133,8 @@ export const getClientPerformanceHistory = cache(
   }
 )
 
-// --- Comparison Data ---
-
-export interface ComparisonDataPoint {
-  date: string
-  [client: string]: string | number // date is string, client values are numbers
-}
-
-export interface ClientComparisonData {
-  sendVolume: ComparisonDataPoint[]
-  replyRate: ComparisonDataPoint[]
-  mailboxHealth: ComparisonDataPoint[]
-}
-
-export const getClientComparisonData = cache(
-  async (clients: string[], days: number = 14): Promise<ClientComparisonData> => {
-    const supabase = createServerClient()
-
-    const { cutoff: cutoffStr } = await rangeWindow(days)
-
-    const [{ data: perfRows }, { data: healthRows }] = await Promise.all([
-      supabase
-        .from("vw_cockpit_daily_client_perf")
-        .select("client, snapshot_date, emails_sent_count, positive_replies_count")
-        .in("client", clients)
-        .gte("snapshot_date", cutoffStr)
-        .order("snapshot_date", { ascending: true }),
-      supabase
-        .from("vw_cockpit_domain_health_daily")
-        .select("client, snapshot_date, avg_health_pct")
-        .in("client", clients)
-        .gte("snapshot_date", cutoffStr),
-    ])
-
-    // Perf per date/client
-    const dateMap = new Map<string, Map<string, { sent: number; replies: number }>>()
-    for (const s of (perfRows ?? []) as PerfRow[]) {
-      if (!dateMap.has(s.snapshot_date)) dateMap.set(s.snapshot_date, new Map())
-      dateMap.get(s.snapshot_date)!.set(s.client, {
-        sent: s.emails_sent_count ?? 0,
-        replies: s.positive_replies_count ?? 0,
-      })
-    }
-
-    // Real mailbox health (avg warmup) per date/client
-    const healthMap = new Map<string, Map<string, { sum: number; count: number }>>()
-    for (const h of healthRows ?? []) {
-      if (h.avg_health_pct == null) continue
-      if (!healthMap.has(h.snapshot_date)) healthMap.set(h.snapshot_date, new Map())
-      const clientMap = healthMap.get(h.snapshot_date)!
-      const entry = clientMap.get(h.client) ?? { sum: 0, count: 0 }
-      entry.sum += Number(h.avg_health_pct)
-      entry.count++
-      clientMap.set(h.client, entry)
-    }
-
-    const allDates = new Set([...dateMap.keys(), ...healthMap.keys()])
-    const sendVolume: ComparisonDataPoint[] = []
-    const replyRate: ComparisonDataPoint[] = []
-    const mailboxHealth: ComparisonDataPoint[] = []
-
-    for (const date of Array.from(allDates).sort()) {
-      const clientMap = dateMap.get(date)
-      const healthClientMap = healthMap.get(date)
-      const sendPoint: ComparisonDataPoint = { date }
-      const replyPoint: ComparisonDataPoint = { date }
-      const healthPoint: ComparisonDataPoint = { date }
-
-      for (const client of clients) {
-        const data = clientMap?.get(client)
-        sendPoint[client] = data?.sent ?? 0
-        replyPoint[client] =
-          data && data.sent > 0
-            ? Number(((data.replies / data.sent) * 100).toFixed(2))
-            : 0
-        const health = healthClientMap?.get(client)
-        healthPoint[client] = health
-          ? Number((health.sum / health.count).toFixed(1))
-          : 0
-      }
-
-      sendVolume.push(sendPoint)
-      replyRate.push(replyPoint)
-      mailboxHealth.push(healthPoint)
-    }
-
-    return { sendVolume, replyRate, mailboxHealth }
-  }
-)
+// (getClientComparisonData + ComparisonDataPoint removed in V4 E1 — the
+// Compare page now uses getClientCompareStats' parameter panels.)
 
 export const getDailySendHistory = cache(
   async (days: number = 14): Promise<DailySendDataPoint[]> => {
