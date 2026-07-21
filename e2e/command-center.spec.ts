@@ -43,12 +43,13 @@ test("KPI cards render", async ({ page }) => {
   // day's date (e.g. "Reply Rate (Fri, 18 Jul)") — match the shape, not a
   // fixed range string.
   await expect(page.getByText(/^Reply Rate \(/).first()).toBeVisible()
-  // V3 Phase 2 efficiency card (emails-per-positive dropped 2026-07-20 as
-  // near-redundant with the reply rate; only contacts-per-positive remains).
+  // V3 Phase 2 efficiency cards
+  await expect(
+    page.getByText("Emails per Positive Reply", { exact: true }).first()
+  ).toBeVisible()
   await expect(
     page.getByText("Contacts per Positive Reply", { exact: true }).first()
   ).toBeVisible()
-  await expect(page.getByText("Emails per Positive Reply")).toHaveCount(0)
 })
 
 test("client summary grid links to client pages", async ({ page }) => {

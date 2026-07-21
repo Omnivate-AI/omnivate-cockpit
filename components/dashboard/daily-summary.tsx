@@ -43,10 +43,11 @@ export function DailySummary({
     })
     .sort((a, b) => b.sent - a.sent)
 
-  // Efficiency metric (V3 Phase 2 C1): distinct contacts to earn one positive
-  // reply, range-scoped. null when there are no positives yet. (Emails-per-
-  // positive dropped 2026-07-20 — near-redundant with the reply rate.)
+  // Two efficiency metrics (V3 Phase 2 C1): emails / contacts to earn one
+  // positive reply, range-scoped. null when there are no positives yet.
   const totalContacts = summaries.reduce((sum, s) => sum + (s.periodContacts ?? 0), 0)
+  const emailsPerPositive =
+    kpis.positiveReplies > 0 ? kpis.emailsSentYesterday / kpis.positiveReplies : null
   const contactsPerPositive =
     kpis.positiveReplies > 0 ? totalContacts / kpis.positiveReplies : null
 
@@ -57,6 +58,7 @@ export function DailySummary({
     totalPositive: kpis.positiveReplies,
     totalReplies: kpis.totalReplies,
     overallReplyRate: kpis.overallReplyRate,
+    emailsPerPositive,
     contactsPerPositive,
     clients: clientLines,
     spamRisks: spamRisks.map((r) => ({
@@ -104,6 +106,12 @@ export function DailySummary({
                   <th className="pb-2 pr-4 font-medium text-right">Total Replies</th>
                   <th className="pb-2 pr-4 font-medium text-right">Reply Rate</th>
                   <th
+                    className="pb-2 pr-4 font-medium text-right"
+                    title="Emails sent ÷ positive replies in this range"
+                  >
+                    Emails / Pos
+                  </th>
+                  <th
                     className="pb-2 font-medium text-right"
                     title="Distinct people emailed ÷ positive replies in this range"
                   >
@@ -113,6 +121,8 @@ export function DailySummary({
               </thead>
               <tbody>
                 {clientLines.map((c) => {
+                  const emailsPerPos =
+                    c.positive > 0 ? Math.round(c.sent / c.positive) : null
                   const contactsPerPos =
                     c.positive > 0 && c.contacts != null
                       ? Math.round(c.contacts / c.positive)
@@ -127,6 +137,9 @@ export function DailySummary({
                       <td className="py-2.5 pr-4 text-right tabular-nums">{c.totalReplies.toLocaleString()}</td>
                       <td className="py-2.5 pr-4 text-right tabular-nums">
                         {c.replyRate > 0 ? `${c.replyRate.toFixed(2)}%` : "N/A"}
+                      </td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums">
+                        {emailsPerPos != null ? emailsPerPos.toLocaleString() : "—"}
                       </td>
                       <td className="py-2.5 text-right tabular-nums">
                         {contactsPerPos != null ? contactsPerPos.toLocaleString() : "—"}

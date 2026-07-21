@@ -5,7 +5,11 @@ import { OverviewPerformance } from "@/components/clients/overview-performance"
 import { ReadyBankCard } from "@/components/clients/ready-bank-card"
 import { RunwayCapacityWidget } from "@/components/clients/runway-capacity-widget"
 import { alertSeverityColor } from "@/lib/design-tokens"
-import { getClientPerformanceHistory, getClientProviderSplit } from "@/lib/queries/analytics"
+import {
+  getClientContactsByRange,
+  getClientPerformanceHistory,
+  getClientProviderSplit,
+} from "@/lib/queries/analytics"
 import { getClientRecipientSplit } from "@/lib/queries/portfolio"
 import { ProviderSplitCard } from "@/components/clients/provider-split-card"
 import { getClientAlerts } from "@/lib/queries/clients"
@@ -39,13 +43,18 @@ export async function OverviewTab({
   // Phase 5) — the range presets + custom picker filter it client-side, so
   // switches are instant. 365 days comfortably covers "All Time" (facts
   // begin 2026-06-09) and any custom range worth charting.
-  const [topAlerts, performanceHistory, providerSplit, recipientSplit, readyBank] = await Promise.all([
-    getClientAlerts(clientSlug, false, 3),
-    getClientPerformanceHistory(clientSlug, 365),
-    getClientProviderSplit(clientSlug, 14),
-    getClientRecipientSplit(clientSlug, 14),
-    getClientReadyBank(clientSlug),
-  ])
+  const [topAlerts, performanceHistory, providerSplit, recipientSplit, readyBank, contactsByRange] =
+    await Promise.all([
+      getClientAlerts(clientSlug, false, 3),
+      getClientPerformanceHistory(clientSlug, 365),
+      getClientProviderSplit(clientSlug, 14),
+      getClientRecipientSplit(clientSlug, 14),
+      getClientReadyBank(clientSlug),
+      // V4 A3: distinct contacts precomputed per range preset — the two
+      // efficiency ratios need a true COUNT(DISTINCT lead), which the daily
+      // history can't provide client-side.
+      getClientContactsByRange(clientSlug, customFrom, customTo),
+    ])
 
   return (
     <div className="space-y-6">
@@ -65,6 +74,7 @@ export async function OverviewTab({
         history={performanceHistory}
         config={config}
         customRange={customFrom ? { from: customFrom, to: customTo } : undefined}
+        contactsByRange={contactsByRange}
       />
 
       {/* Provider Performance (sender infrastructure + recipient inbox split) */}

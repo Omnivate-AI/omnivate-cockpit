@@ -17,12 +17,23 @@ import {
   YAxis,
 } from "recharts"
 import { format } from "date-fns"
-import { Mail, ThumbsUp, MessageCircle, Percent, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import {
+  Mail,
+  ThumbsUp,
+  MessageCircle,
+  Percent,
+  Send,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Users,
+} from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { MetricCard, type MetricCardTrend } from "@/components/shared/metric-card"
 import { DateRangePicker } from "@/components/clients/date-range-picker"
 import { getTargetForDate, type ClientConfig, type DailyTargets } from "@/types/analytics"
-import type { PerformanceHistoryPoint } from "@/lib/queries/analytics"
+import type { ClientContactsByRange, PerformanceHistoryPoint } from "@/lib/queries/analytics"
+import { formatRatio } from "@/lib/format"
 
 /**
  * V2 Phase 5 — the client Overview performance suite (Omar's 07-13 graph
@@ -52,6 +63,9 @@ interface OverviewPerformanceProps {
   history: PerformanceHistoryPoint[]
   config: ClientConfig
   customRange?: CustomRange
+  /** V4 A3 — distinct contacts precomputed server-side per range preset
+      (a COUNT(DISTINCT lead) can't be derived from the daily history). */
+  contactsByRange?: ClientContactsByRange
 }
 
 const RANGES: { key: Exclude<TimeRange, "custom">; label: string }[] = [
@@ -173,7 +187,12 @@ function weekendSpans(dates: string[]): { x1: string; x2: string }[] {
   return spans
 }
 
-export function OverviewPerformance({ history, config, customRange }: OverviewPerformanceProps) {
+export function OverviewPerformance({
+  history,
+  config,
+  customRange,
+  contactsByRange,
+}: OverviewPerformanceProps) {
   const [range, setRange] = useState<TimeRange>(customRange ? "custom" : "week")
 
   // A newly applied ?from/?to takes over the selection; clearing falls back
@@ -224,6 +243,23 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
 
   const currentRate = current.sent > 0 ? (current.positive / current.sent) * 100 : 0
   const previousRate = previous && previous.sent > 0 ? (previous.positive / previous.sent) * 100 : 0
+
+  // V4 A1/A3 — the two efficiency ratios, differentiated (Omar: emailing one
+  // person 10 times who then replies = 10:1 emails/positive, 1:1
+  // contacts/positive). Emails/positive derives fully from the facts; contacts
+  // come precomputed per preset (COUNT DISTINCT can't be summed client-side).
+  const emailsPerPositive = current.positive > 0 ? current.sent / current.positive : null
+  const contactsInRange = contactsByRange ? contactsByRange[range] : null
+  const contactsPerPositive =
+    contactsInRange != null && current.positive > 0
+      ? contactsInRange / current.positive
+      : null
+  // Send-event capture began 2026-06-03 — an "All Time" contacts count can't
+  // reach further back, so the label says so instead of implying all-time.
+  const contactsWindowNote =
+    range === "all" && contactsByRange
+      ? ` · since ${format(new Date(`${contactsByRange.eraStart}T00:00:00`), "d MMM yyyy")}`
+      : ""
 
   // Reply-rate chart headline: period average TOTAL-reply rate + change vs
   // the preceding equal-length period, in percentage points (explicit, per
@@ -282,7 +318,7 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
       </p>
 
       {/* KPI cards for the selected window */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <MetricCard
           title="Positive Replies"
           value={current.positive.toLocaleString()}
@@ -307,6 +343,21 @@ export function OverviewPerformance({ history, config, customRange }: OverviewPe
           value={currentRate > 0 ? `${currentRate.toFixed(2)}%` : "0%"}
           icon={Percent}
           trend={previous ? computeTrend(currentRate, previousRate) : undefined}
+        />
+        {/* V4 A1/A3 — the two efficiency ratios at client level. Distinct
+            metrics: 10 emails to 1 replier = 10:1 emails/positive but 1:1
+            contacts/positive. Do not merge or drop as redundant. */}
+        <MetricCard
+          title="Contacts per Positive Reply"
+          value={formatRatio(contactsPerPositive)}
+          icon={Users}
+          subtitle={`People emailed ÷ positive reply${contactsWindowNote}`}
+        />
+        <MetricCard
+          title="Emails per Positive Reply"
+          value={formatRatio(emailsPerPositive)}
+          icon={Send}
+          subtitle="Emails sent ÷ positive reply"
         />
       </div>
 

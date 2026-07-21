@@ -459,6 +459,80 @@ export const getContactsEmailed = cache(
   }
 )
 
+/** The day the send-events webhook capture began — the earliest date any
+    distinct-contacts (and provider-matrix) number can honestly cover. */
+export const SEND_CAPTURE_ERA_START = "2026-06-03"
+
+/** Distinct contacts for ONE client (children summed for parent slugs) over an
+    explicit [start, end] date window — cockpit_contacts_emailed RPC. */
+async function contactsForWindow(
+  slugs: string[],
+  start: string,
+  end: string
+): Promise<number | null> {
+  const supabase = createServerClient()
+  const { data, error } = await supabase.rpc("cockpit_contacts_emailed", {
+    p_start: start,
+    p_end: end,
+  })
+  if (error || !data) return null
+  let total = 0
+  for (const r of data as { client: string; contacts_emailed: number }[]) {
+    if (slugs.includes(r.client)) total += Number(r.contacts_emailed) || 0
+  }
+  return total
+}
+
+export interface ClientContactsByRange {
+  week: number | null
+  month: number | null
+  all: number | null
+  custom: number | null
+  /** Honesty floor for the "All Time" ratio label. */
+  eraStart: string
+}
+
+/**
+ * V4 A3 — distinct people emailed for a client, precomputed for every range
+ * preset the Overview offers (This Week / This Month / All Time / custom).
+ * Contacts can't be derived client-side from the daily history (a lead emailed
+ * Mon + Wed must count once), so the server computes each preset window up
+ * front and the client picks — preset switches stay instant (Phase 4 spirit).
+ * Windows end at the latest BUSINESS day (the facts anchor) so the ratio's
+ * numerator (contacts) and denominator (positives from facts) cover the same
+ * days. "All" is floored at SEND_CAPTURE_ERA_START — events don't exist before.
+ */
+export const getClientContactsByRange = cache(
+  async (
+    client: string,
+    customFrom?: string,
+    customTo?: string
+  ): Promise<ClientContactsByRange> => {
+    const slugs = await resolveClientSlugs(client)
+    const { anchor } = await rangeWindow(1)
+    const end = anchor ?? new Date().toISOString().split("T")[0]
+
+    const startDaysAgo = (days: number) => {
+      const d = new Date()
+      d.setUTCDate(d.getUTCDate() - days)
+      return d.toISOString().split("T")[0]
+    }
+
+    const clampEnd = (to?: string) => (to && to < end ? to : end)
+
+    const [week, month, all, custom] = await Promise.all([
+      contactsForWindow(slugs, startDaysAgo(7), end),
+      contactsForWindow(slugs, startDaysAgo(30), end),
+      contactsForWindow(slugs, SEND_CAPTURE_ERA_START, end),
+      customFrom
+        ? contactsForWindow(slugs, customFrom, clampEnd(customTo))
+        : Promise.resolve(null),
+    ])
+
+    return { week, month, all, custom, eraStart: SEND_CAPTURE_ERA_START }
+  }
+)
+
 export const getClientSummaries = cache(
   async (days: number = 1): Promise<ClientSummary[]> => {
     const supabase = createServerClient()
