@@ -31,6 +31,8 @@ export interface CampaignRegistryRow {
   all_time_replies?: number | null
   all_time_interested?: number | null
   all_time_bounces?: number | null
+  /** Smartlead lifetime unique leads contacted (unique_sent; migration 026) */
+  all_time_unique_contacts?: number | null
   total_leads?: number | null
   not_started?: number | null
   in_progress?: number | null
@@ -128,6 +130,7 @@ function lifetimeSnapshot(
     sequence_length: campaign.sequence_length ?? 0,
     all_time_emails_sent: sent,
     all_time_interested: interested,
+    unique_contacts: campaign.all_time_unique_contacts ?? null,
   }
 }
 

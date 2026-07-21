@@ -123,6 +123,10 @@ export interface CampaignSnapshot {
   sequence_length: number
   all_time_emails_sent: number
   all_time_interested: number
+  /** Smartlead's lifetime unique-leads-contacted (sp_campaign_lifetime.
+      unique_sent) — the per-campaign "contacts" base for contacts-per-positive
+      (V4 B3). null when lifetime stats are missing. */
+  unique_contacts: number | null
 }
 
 export interface SnapshotsResponse {

@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { replyRateColor } from "@/lib/design-tokens"
+import { formatRatio } from "@/lib/format"
 import { ChevronDown } from "lucide-react"
 import {
   Tooltip,
@@ -162,6 +162,14 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange }: Campai
   const bounced = snap?.bounced ?? 0
   const bounceRate = allTimeSent > 0 ? bounced / allTimeSent : 0
 
+  // V4 B2/B3 — the two lifetime efficiency ratios on the card face.
+  const positives = snap?.all_time_interested ?? 0
+  const emailsPerPositive = positives > 0 ? allTimeSent / positives : null
+  const contactsPerPositive =
+    positives > 0 && snap?.unique_contacts != null
+      ? snap.unique_contacts / positives
+      : null
+
   const healthResult = computeCampaignHealthScore({
     replyRate: replyRate ?? 0,
     bounceRate,
@@ -175,8 +183,6 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange }: Campai
     bounceRate,
     allTimeEmailsSent: allTimeSent,
   })
-
-  const rateColors = replyRate !== null ? replyRateColor(replyRate) : null
 
   return (
     <div className="overflow-hidden rounded-lg border bg-card transition-transform duration-200 hover:scale-[1.01]">
@@ -218,15 +224,20 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange }: Campai
             <LeadStatusBar snap={snap} />
           </div>
 
-          {/* Hero reply rate */}
+          {/* Hero figure \u2014 POSITIVE REPLIES COUNT (V4 B1/B4: Omar \u2014 "how many
+              interested replies did we get, I want that to be the number one
+              figure"; the positive-reply-rate % is off the top spot but stays
+              in the detail panel + Compare). */}
           <div className="hidden shrink-0 text-center sm:block">
-            <div className={cn("text-xl font-bold tabular-nums", rateColors?.text)}>
-              {replyRate !== null ? `${replyRate.toFixed(1)}%` : "\u2014"}
+            <div className="text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+              {snap ? formatNum(snap.all_time_interested) : "\u2014"}
             </div>
-            <div className="text-[10px] text-muted-foreground">Positive Reply Rate</div>
+            <div className="text-[10px] text-muted-foreground">Positive Replies</div>
           </div>
 
-          {/* Sent + Interested numbers (mini sparklines removed \u2014 V2 Phase 1) */}
+          {/* Then: Sent, and the two efficiency ratios (V4 B2/B3). Contacts =
+              Smartlead's lifetime unique-leads-contacted; both ratios lifetime,
+              matching every other number on this card. */}
           <div className="hidden gap-4 sm:flex">
             <div className="text-center">
               <div className="text-xs text-muted-foreground">Sent</div>
@@ -234,10 +245,22 @@ function CampaignCard({ campaign, isExpanded, onToggle, onStatusChange }: Campai
                 {snap ? formatNum(snap.all_time_emails_sent) : "\u2014"}
               </div>
             </div>
-            <div className="text-center">
-              <div className="text-xs text-muted-foreground">Interested</div>
+            <div
+              className="text-center"
+              title="Distinct people contacted \u00f7 positive replies (lifetime)"
+            >
+              <div className="text-xs text-muted-foreground">Contacts / Pos</div>
               <div className="text-sm font-semibold tabular-nums">
-                {snap ? formatNum(snap.all_time_interested) : "\u2014"}
+                {formatRatio(contactsPerPositive)}
+              </div>
+            </div>
+            <div
+              className="text-center"
+              title="Emails sent \u00f7 positive replies (lifetime)"
+            >
+              <div className="text-xs text-muted-foreground">Emails / Pos</div>
+              <div className="text-sm font-semibold tabular-nums">
+                {formatRatio(emailsPerPositive)}
               </div>
             </div>
           </div>

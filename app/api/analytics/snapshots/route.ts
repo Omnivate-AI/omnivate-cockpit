@@ -65,6 +65,9 @@ function toCampaignSnapshot(
     sequence_length: sequenceLength,
     all_time_emails_sent: row.all_time_emails_sent ?? 0,
     all_time_interested: row.all_time_interested ?? 0,
+    // Daily-fact rows carry no lifetime unique-contacts figure — the card
+    // computes contacts-per-positive from the registry path instead.
+    unique_contacts: null,
   }
 }
 
