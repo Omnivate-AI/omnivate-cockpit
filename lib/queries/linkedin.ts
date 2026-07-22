@@ -4,7 +4,7 @@ import { resolveClientSlugs } from "@/lib/queries/clients"
 
 /**
  * V5 — LinkedIn (Aimfox) outreach reads. Source: the cockpit-owned
- * linkedin_campaigns registry + linkedin_daily_campaign_facts CUMULATIVE
+ * sp_linkedin_campaigns registry + sp_linkedin_daily_campaign_facts CUMULATIVE
  * snapshots (migration 028), mirroring the email pattern (sp_campaigns +
  * sp_daily_campaign_facts). The cockpit never calls Aimfox live — a daily
  * sync job (plugin/trigger stack) is the follow-up that keeps these fresh;
@@ -69,7 +69,7 @@ export const getClientLinkedIn = cache(
     const slugs = await resolveClientSlugs(client)
 
     const { data: regs } = await supabase
-      .from("linkedin_campaigns")
+      .from("sp_linkedin_campaigns")
       .select("aimfox_campaign_id, client, name, persona, targets_loaded, status")
       .in("client", slugs)
       .order("name", { ascending: true })
@@ -77,7 +77,7 @@ export const getClientLinkedIn = cache(
 
     const ids = (regs as RegistryRow[]).map((r) => r.aimfox_campaign_id)
     const { data: facts } = await supabase
-      .from("linkedin_daily_campaign_facts")
+      .from("sp_linkedin_daily_campaign_facts")
       .select("*")
       .in("aimfox_campaign_id", ids)
       .order("snapshot_date", { ascending: false })
